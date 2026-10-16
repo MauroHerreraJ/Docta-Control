@@ -1,6 +1,6 @@
 import * as Location from "expo-location";
 import * as TaskManager from "expo-task-manager";
-import { Linking, PermissionsAndroid, Platform } from "react-native";
+import { PermissionsAndroid, Platform } from "react-native";
 import { consultarSolicitud, responderSolicitud, restaurarSesion } from "./sesion";
 
 export const TAREA_FONDO = "docta5-servicio";
@@ -17,7 +17,6 @@ const LATIDO_DEFECTO_SEG = 60;
 const GEO_DEFECTO_MIN = 5;
 const TOPE_MS = 20 * 1000;
 
-let ahorroPedido = false;
 let ocupado = false;
 let siguiente = null;
 let latidoSeg = LATIDO_DEFECTO_SEG;
@@ -26,6 +25,7 @@ let ultimoGeoOk = 0;
 let ultimoLatidoOk = 0;
 let tokenEnviado = "";
 let intervaloAplicado = 0;
+let consultaTimer = null;
 
 const estado = {
   servicio: "detenido",
@@ -36,6 +36,7 @@ const estado = {
   ultimoError: "",
   nota: "",
   pendiente: false,
+  informa: true,
   latidoSeg: LATIDO_DEFECTO_SEG,
   geoMin: GEO_DEFECTO_MIN,
 };
@@ -165,26 +166,51 @@ function latidoVencido() {
   return Date.now() - ultimoLatidoOk >= Math.max(5, latidoSeg - 2) * 1000;
 }
 
+function cortarConsulta() {
+  if (!consultaTimer) return;
+  clearTimeout(consultaTimer);
+  consultaTimer = null;
+}
+
+/** Sigue preguntando aunque el GPS no avise. Una sola espera, sin amontonar pedidos. */
+function programarConsulta(token) {
+  cortarConsulta();
+  const espera = Math.max(5, latidoSeg) * 1000;
+  consultaTimer = setTimeout(() => {
+    consultaTimer = null;
+    if (tokenEnviado !== token) return;
+    encolar({
+      tipo: "consulta",
+      tarea: () => atenderServidor(token),
+    }).finally(() => {
+      if (tokenEnviado === token) programarConsulta(token);
+    });
+  }, espera);
+}
+
 /** Consulta al servidor. Si hay una solicitud, la confirma con la posición. */
 async function atenderServidor(token) {
   const data = await consultarSolicitud(token);
   aplicarIntervalos(data);
   const http = Number(data?.http) || 200;
+  const informa = typeof data?.pendiente === "boolean";
+  const hayPedido = informa ? Boolean(data.pendiente) : true;
   publicar({
     ultimoEnvioAt: new Date().toISOString(),
     ultimoTipo: "consulta",
     ultimoHttp: http,
     ultimoError: "",
-    pendiente: Boolean(data.pendiente),
+    pendiente: informa ? Boolean(data.pendiente) : false,
+    informa,
   });
-  console.log(`[docta] consulta HTTP ${http} pendiente=${Boolean(data.pendiente)}`);
-  if (!data.pendiente) {
+  console.log(`[docta] consulta HTTP ${http} pendiente=${informa ? Boolean(data.pendiente) : "sin-campo"}`);
+  if (!hayPedido) {
     ultimoLatidoOk = Date.now();
     return;
   }
   const punto = await obtenerPunto();
   if (!punto) {
-    publicar({ nota: "Hay una solicitud y no hay posición." });
+    publicar({ nota: informa ? "Hay una solicitud y no hay posición." : "No hay posición para enviar." });
     return;
   }
   const respuesta = await responderSolicitud(token, punto);
@@ -212,7 +238,10 @@ async function obtenerPunto() {
   }
   try {
     return puntoDe(
-      await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }),
+      await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.Balanced,
+        mayShowUserSettingsDialog: false,
+      }),
     );
   } catch {
     return null;
@@ -232,21 +261,15 @@ TaskManager.defineTask(TAREA_FONDO, async () => {
 
 async function pedirAviso() {
   if (Platform.OS !== "android" || Number(Platform.Version) < 33) return;
+  const tiene = await PermissionsAndroid.check(
+    PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS,
+  ).catch(() => false);
+  if (tiene) return;
   await PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS).catch(() => {});
 }
 
-async function pedirSinAhorro() {
-  if (Platform.OS !== "android" || ahorroPedido) return;
-  ahorroPedido = true;
-  try {
-    await Linking.sendIntent("android.settings.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS");
-  } catch {
-    await Linking.sendIntent("android.settings.IGNORE_BATTERY_OPTIMIZATION_SETTINGS").catch(() => {});
-  }
-}
-
-/** El aviso ya está en primer plano. Recién ahí se pide el permiso de fondo. */
-async function pedirUbicacionEnFondo() {
+/** Solo lee el permiso. Pedirlo abre Ajustes y manda la app atrás. */
+async function leerUbicacionEnFondo() {
   const actual = await Location.getBackgroundPermissionsAsync().catch(() => null);
   if (actual?.status === "granted") {
     publicar({ fondo: "concedido" });
@@ -256,8 +279,7 @@ async function pedirUbicacionEnFondo() {
     publicar({ fondo: "denegado" });
     return;
   }
-  const pedido = await Location.requestBackgroundPermissionsAsync().catch(() => null);
-  publicar({ fondo: pedido?.status === "granted" ? "concedido" : "denegado" });
+  publicar({ fondo: "sin pedir" });
 }
 
 /** Aviso fijo de Android. Sigue con la pantalla apagada y si cierran la app. */
@@ -266,10 +288,13 @@ export async function arrancarServicio() {
   if (!sesion?.token) return false;
 
   await pedirAviso();
-  const frente = await Location.requestForegroundPermissionsAsync();
-  if (frente.status !== "granted") {
-    publicar({ servicio: "sin permiso" });
-    return false;
+  const yaFrente = await Location.getForegroundPermissionsAsync().catch(() => null);
+  if (yaFrente?.status !== "granted") {
+    const frente = await Location.requestForegroundPermissionsAsync();
+    if (frente.status !== "granted") {
+      publicar({ servicio: "sin permiso" });
+      return false;
+    }
   }
 
   await Location.stopLocationUpdatesAsync(TAREA_VIEJA).catch(() => {});
@@ -295,8 +320,7 @@ export async function arrancarServicio() {
     await new Promise((resolver) => setTimeout(resolver, 1500));
   }
   publicar({ servicio: "activo" });
-  await pedirUbicacionEnFondo();
-  await pedirSinAhorro();
+  await leerUbicacionEnFondo();
   return true;
 }
 
@@ -306,21 +330,27 @@ export async function pararServicio() {
   await Location.stopLocationUpdatesAsync(TAREA_FONDO).catch(() => {});
 }
 
-/** Arranca el aviso al entrar. Lo detiene solo el logout. La consulta la hace la tarea del servicio. */
+/** Arranca el aviso al entrar. Lo detiene solo el logout. La consulta sigue aunque no haya GPS. */
 export async function iniciarConexion(token) {
   if (!token) return false;
-  const ok = await arrancarServicio().catch(() => false);
-  if (tokenEnviado === token) return ok;
+  const primera = tokenEnviado !== token;
   tokenEnviado = token;
-  await encolar({
-    tipo: "consulta",
-    tarea: () => atenderServidor(token),
-  });
-  return ok;
+  if (primera || latidoVencido()) {
+    cortarConsulta();
+    await encolar({
+      tipo: "consulta",
+      tarea: () => atenderServidor(token),
+    });
+    programarConsulta(token);
+  } else if (!consultaTimer) {
+    programarConsulta(token);
+  }
+  return arrancarServicio().catch(() => false);
 }
 
 /** Logout: para el aviso y deja de enviar. */
 export async function pararConexion() {
+  cortarConsulta();
   tokenEnviado = "";
   ultimoLatidoOk = 0;
   ultimoGeoOk = 0;

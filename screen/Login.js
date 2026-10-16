@@ -1,9 +1,12 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  Dimensions,
+  Keyboard,
   KeyboardAvoidingView,
   Platform,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -11,12 +14,40 @@ import {
 } from "react-native";
 import { ingresarVigilador } from "../util/sesion";
 
+function altoDelTeclado(evento) {
+  const alto = Number(evento?.endCoordinates?.height);
+  const techo = Number(evento?.endCoordinates?.screenY);
+  const pantalla = Dimensions.get("screen").height;
+  const porTecho = Number.isFinite(techo) ? pantalla - techo : 0;
+  const porAlto = Number.isFinite(alto) ? alto : 0;
+  return Math.max(0, Math.round(Math.max(porAlto, porTecho)));
+}
+
 export default function Login({ onIngresar }) {
+  const lista = useRef(null);
   const [usuario, setUsuario] = useState("");
   const [clave, setClave] = useState("");
   const [verClave, setVerClave] = useState(false);
   const [error, setError] = useState("");
   const [entrando, setEntrando] = useState(false);
+  const [teclado, setTeclado] = useState(0);
+
+  useEffect(() => {
+    const mostrar = Keyboard.addListener("keyboardDidShow", (evento) => {
+      setTeclado(Platform.OS === "android" ? altoDelTeclado(evento) : 0);
+    });
+    const ocultar = Keyboard.addListener("keyboardDidHide", () => setTeclado(0));
+    return () => {
+      mostrar.remove();
+      ocultar.remove();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (teclado <= 0) return undefined;
+    const frame = requestAnimationFrame(() => lista.current?.scrollToEnd({ animated: true }));
+    return () => cancelAnimationFrame(frame);
+  }, [teclado]);
 
   const ingresar = async () => {
     const nombre = usuario.trim();
@@ -41,6 +72,16 @@ export default function Login({ onIngresar }) {
       style={styles.fondo}
       behavior={Platform.OS === "ios" ? "padding" : undefined}
     >
+      <ScrollView
+        ref={lista}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={[
+          styles.contenido,
+          teclado > 0 && styles.contenidoConTeclado,
+          teclado > 0 && { paddingBottom: teclado },
+        ]}
+      >
       <View style={styles.tarjeta}>
         <Text style={styles.marca}>Docta</Text>
         <Text style={styles.titulo}>Ingreso de vigilador</Text>
@@ -87,6 +128,7 @@ export default function Login({ onIngresar }) {
           )}
         </Pressable>
       </View>
+      </ScrollView>
     </KeyboardAvoidingView>
   );
 }
@@ -95,8 +137,16 @@ const styles = StyleSheet.create({
   fondo: {
     flex: 1,
     backgroundColor: "#F4FBFE",
+  },
+  contenido: {
+    flexGrow: 1,
     justifyContent: "center",
     paddingHorizontal: 24,
+    paddingVertical: 16,
+  },
+  contenidoConTeclado: {
+    justifyContent: "flex-end",
+    paddingTop: 8,
   },
   tarjeta: {
     backgroundColor: "#ffffff",

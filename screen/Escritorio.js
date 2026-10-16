@@ -49,7 +49,9 @@ export default function Escritorio({ usuario, onSalir, saliendo, enFondo, diag }
         <Text style={styles.detalle}>{textoServicio(diag, enFondo)}</Text>
         <Text style={styles.linea}>{textoFondo(diag)}</Text>
         <Text style={styles.linea}>
-          {`Consulta cada ${latido} s. ${diag?.pendiente ? "Hay una solicitud." : "Sin solicitud pendiente."}`}
+          {diag?.informa === false
+            ? `Consulta cada ${latido} s. Envía la posición.`
+            : `Consulta cada ${latido} s. ${diag?.pendiente ? "Hay una solicitud." : "Sin solicitud pendiente."}`}
         </Text>
         <Text style={styles.linea}>
           {`Último envío ${horaDe(diag?.ultimoEnvioAt)}${diag?.ultimoTipo ? ` · ${diag.ultimoTipo}` : ""}`}

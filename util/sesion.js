@@ -147,13 +147,7 @@ export async function mantenerSesion(token) {
 
 /** El celular pregunta si el servidor tiene una solicitud. No manda la posición. */
 export async function consultarSolicitud(token) {
-  const data = await mantenerSesion(token);
-  if (typeof data?.pendiente !== "boolean") {
-    const error = new Error("El servidor no informa solicitudes.");
-    error.status = Number(data?.http) || 200;
-    throw error;
-  }
-  return data;
+  return mantenerSesion(token);
 }
 
 /** Confirma la solicitud del servidor con la posición. */
