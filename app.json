@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "5_DoctaControl",
+    "name": "Docta",
     "slug": "5_DoctaControl",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -15,8 +15,30 @@
         "foregroundImage": "./assets/android-icon-foreground.png",
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
-      }
+      },
+      "package": "com.pedrodarrigo.x5_DoctaControl",
+      "permissions": [
+        "ACCESS_COARSE_LOCATION",
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_BACKGROUND_LOCATION",
+        "FOREGROUND_SERVICE",
+        "FOREGROUND_SERVICE_LOCATION",
+        "POST_NOTIFICATIONS",
+        "WAKE_LOCK"
+      ]
     },
+    "plugins": [
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "Docta usa la ubicación para seguir en servicio con la pantalla apagada.",
+          "locationWhenInUsePermission": "Docta usa la ubicación mientras estás en servicio.",
+          "isAndroidBackgroundLocationEnabled": true,
+          "isAndroidForegroundServiceEnabled": true,
+          "isIosBackgroundLocationEnabled": true
+        }
+      ]
+    ],
     "web": {
       "favicon": "./assets/favicon.png"
     }
