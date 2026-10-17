@@ -1,4 +1,7 @@
+import { useEffect, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
+import { pedirSinAhorro, pedirUbicacionTodoElTiempo } from "../util/fondo";
+import { escucharPush } from "../util/push";
 import { nombreDe } from "../util/sesion";
 
 function horaDe(iso) {
@@ -27,14 +30,25 @@ function textoHttp(diag) {
   return `HTTP ${diag.ultimoHttp}`;
 }
 
-export default function Escritorio({ usuario, onSalir, saliendo, enFondo, diag }) {
+function textoPush(push) {
+  if (push?.error) return push.error;
+  if (push?.listo) return "Push listo. El servidor puede despertarla.";
+  return "Registrando push.";
+}
+
+export default function Configuracion({ usuario, onSalir, saliendo, enFondo, diag, onVolver }) {
   const nombre = nombreDe(usuario);
   const latido = diag?.latidoSeg || 60;
+  const [push, setPush] = useState(null);
+
+  useEffect(() => escucharPush(setPush), []);
 
   return (
     <View style={styles.fondo}>
       <View style={styles.barra}>
-        <Text style={styles.marca}>Docta</Text>
+        <Pressable onPress={onVolver} hitSlop={8}>
+          <Text style={styles.volver}>Volver</Text>
+        </Pressable>
         <Pressable onPress={onSalir} disabled={saliendo} hitSlop={8}>
           <Text style={styles.salir}>{saliendo ? "Saliendo..." : "Salir"}</Text>
         </Pressable>
@@ -45,8 +59,9 @@ export default function Escritorio({ usuario, onSalir, saliendo, enFondo, diag }
       <Text style={styles.rol}>Vigilador</Text>
 
       <View style={styles.tarjeta}>
-        <Text style={styles.titulo}>Escritorio</Text>
+        <Text style={styles.titulo}>Configuración</Text>
         <Text style={styles.detalle}>{textoServicio(diag, enFondo)}</Text>
+        <Text style={styles.linea}>{textoPush(push)}</Text>
         <Text style={styles.linea}>{textoFondo(diag)}</Text>
         <Text style={styles.linea}>
           {diag?.informa === false
@@ -59,6 +74,12 @@ export default function Escritorio({ usuario, onSalir, saliendo, enFondo, diag }
         <Text style={styles.linea}>{textoHttp(diag)}</Text>
         {diag?.ultimoError ? <Text style={styles.error}>{diag.ultimoError}</Text> : null}
         {diag?.nota ? <Text style={styles.linea}>{diag.nota}</Text> : null}
+        <Pressable style={styles.extra} onPress={() => pedirSinAhorro()}>
+          <Text style={styles.extraTexto}>Evitar que Android la duerma</Text>
+        </Pressable>
+        <Pressable style={styles.extra} onPress={() => pedirUbicacionTodoElTiempo()}>
+          <Text style={styles.extraTexto}>Ubicación todo el tiempo</Text>
+        </Pressable>
       </View>
     </View>
   );
@@ -76,9 +97,9 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     paddingBottom: 18,
   },
-  marca: {
+  volver: {
     color: "#0F76C4",
-    fontSize: 26,
+    fontSize: 15,
     fontWeight: "700",
   },
   salir: {
@@ -132,5 +153,18 @@ const styles = StyleSheet.create({
     color: "#9A3412",
     fontSize: 14,
     lineHeight: 20,
+  },
+  extra: {
+    marginTop: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#9FDFFC",
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+  },
+  extraTexto: {
+    color: "#0F76C4",
+    fontSize: 14,
+    fontWeight: "700",
   },
 });

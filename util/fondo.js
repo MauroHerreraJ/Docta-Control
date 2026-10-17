@@ -1,7 +1,7 @@
 import * as Location from "expo-location";
 import * as TaskManager from "expo-task-manager";
-import { PermissionsAndroid, Platform } from "react-native";
-import { consultarSolicitud, responderSolicitud, restaurarSesion } from "./sesion";
+import { Linking, PermissionsAndroid, Platform } from "react-native";
+import { consultarSolicitud, olvidarSesion, responderSolicitud, restaurarSesion } from "./sesion";
 
 export const TAREA_FONDO = "docta5-servicio";
 const TAREA_VIEJA = "docta5-keepalive";
@@ -16,6 +16,7 @@ const GEO_SIMULADOR = {
 const LATIDO_DEFECTO_SEG = 60;
 const GEO_DEFECTO_MIN = 5;
 const TOPE_MS = 20 * 1000;
+const REINTENTO_MS = 15 * 1000;
 
 let ocupado = false;
 let siguiente = null;
@@ -26,6 +27,9 @@ let ultimoLatidoOk = 0;
 let tokenEnviado = "";
 let intervaloAplicado = 0;
 let consultaTimer = null;
+let cerrada = false;
+let corte = null;
+let servicioCola = Promise.resolve();
 
 const estado = {
   servicio: "detenido",
@@ -128,6 +132,7 @@ async function correr(trabajo) {
     await conTope(trabajo.tarea());
     return true;
   } catch (error) {
+    if (error?.cancelada || cerrada) return false;
     const status = Number(error?.status);
     const http = Number.isFinite(status) ? status : 0;
     const mensaje = String(error?.message || "Error de red");
@@ -141,13 +146,14 @@ function encolar(trabajo) {
   return new Promise((resolve) => {
     const item = { ...trabajo, resolve };
     if (ocupado) {
+      if (siguiente) siguiente.resolve(false);
       siguiente = item;
       return;
     }
     ocupado = true;
     const seguir = (actual) => {
-      correr(actual).finally(() => {
-        actual.resolve();
+      correr(actual).then((ok) => {
+        actual.resolve(ok);
         const pend = siguiente;
         siguiente = null;
         if (pend) {
@@ -172,25 +178,36 @@ function cortarConsulta() {
   consultaTimer = null;
 }
 
-/** Sigue preguntando aunque el GPS no avise. Una sola espera, sin amontonar pedidos. */
-function programarConsulta(token) {
+function signalDeConsulta() {
+  if (!corte || corte.signal.aborted) corte = new AbortController();
+  return corte.signal;
+}
+
+/** Sigue preguntando aunque el GPS no avise. Una sola espera. Si falla, reintenta con la misma. */
+function programarConsulta(token, esperaMs) {
   cortarConsulta();
-  const espera = Math.max(5, latidoSeg) * 1000;
+  if (!token || tokenEnviado !== token || cerrada) return;
+  const espera = Number.isFinite(esperaMs) ? esperaMs : Math.max(5, latidoSeg) * 1000;
   consultaTimer = setTimeout(() => {
     consultaTimer = null;
-    if (tokenEnviado !== token) return;
+    if (tokenEnviado !== token || cerrada) return;
+    arrancarServicio().catch(() => false);
     encolar({
       tipo: "consulta",
       tarea: () => atenderServidor(token),
-    }).finally(() => {
-      if (tokenEnviado === token) programarConsulta(token);
+    }).then((ok) => {
+      if (tokenEnviado !== token || cerrada) return;
+      programarConsulta(token, ok ? undefined : REINTENTO_MS);
     });
   }, espera);
 }
 
 /** Consulta al servidor. Si hay una solicitud, la confirma con la posición. */
 async function atenderServidor(token) {
-  const data = await consultarSolicitud(token);
+  if (!token || tokenEnviado !== token || cerrada) return;
+  const signal = signalDeConsulta();
+  const data = await consultarSolicitud(token, signal);
+  if (tokenEnviado !== token || signal.aborted || cerrada) return;
   aplicarIntervalos(data);
   const http = Number(data?.http) || 200;
   const informa = typeof data?.pendiente === "boolean";
@@ -209,11 +226,14 @@ async function atenderServidor(token) {
     return;
   }
   const punto = await obtenerPunto();
+  if (tokenEnviado !== token || signal.aborted || cerrada) return;
   if (!punto) {
-    publicar({ nota: informa ? "Hay una solicitud y no hay posición." : "No hay posición para enviar." });
-    return;
+    const error = new Error(informa ? "Hay una solicitud y no hay posición." : "No hay posición para enviar.");
+    error.status = 0;
+    throw error;
   }
-  const respuesta = await responderSolicitud(token, punto);
+  const respuesta = await responderSolicitud(token, punto, signal);
+  if (tokenEnviado !== token || signal.aborted || cerrada) return;
   ultimoLatidoOk = Date.now();
   ultimoGeoOk = Date.now();
   publicar({
@@ -250,9 +270,11 @@ async function obtenerPunto() {
 
 /** La despierta el servicio de Android. La consulta no usa el punto GPS de este aviso. */
 TaskManager.defineTask(TAREA_FONDO, async () => {
+  if (cerrada) return;
   const sesion = await restaurarSesion();
   const token = sesion?.token;
   if (!token || !latidoVencido()) return;
+  tokenEnviado = token;
   await encolar({
     tipo: "consulta",
     tarea: () => atenderServidor(token),
@@ -266,6 +288,25 @@ async function pedirAviso() {
   ).catch(() => false);
   if (tiene) return;
   await PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS).catch(() => {});
+}
+
+const PAQUETE = "com.pedrodarrigo.x5_DoctaControl";
+
+/** Lo abre el vigilador. Al iniciar no se muestra. */
+export async function pedirSinAhorro() {
+  try {
+    await Linking.sendIntent("android.settings.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS", [
+      { key: "android.intent.extra.PACKAGE_NAME", value: PAQUETE },
+    ]);
+  } catch {
+    await Linking.openSettings().catch(() => {});
+  }
+}
+
+/** Lo abre el vigilador. Pide ubicación todo el tiempo. */
+export async function pedirUbicacionTodoElTiempo() {
+  const pedido = await Location.requestBackgroundPermissionsAsync().catch(() => null);
+  publicar({ fondo: pedido?.status === "granted" ? "concedido" : "denegado" });
 }
 
 /** Solo lee el permiso. Pedirlo abre Ajustes y manda la app atrás. */
@@ -282,25 +323,32 @@ async function leerUbicacionEnFondo() {
   publicar({ fondo: "sin pedir" });
 }
 
-/** Aviso fijo de Android. Sigue con la pantalla apagada y si cierran la app. */
-export async function arrancarServicio() {
+async function arrancarServicioAhora({ pedirPermiso = false } = {}) {
+  try {
+  if (cerrada || !tokenEnviado) return false;
   const sesion = await restaurarSesion();
-  if (!sesion?.token) return false;
+  if (!sesion?.token || cerrada || !tokenEnviado) return false;
 
-  await pedirAviso();
+  if (pedirPermiso) await pedirAviso();
   const yaFrente = await Location.getForegroundPermissionsAsync().catch(() => null);
   if (yaFrente?.status !== "granted") {
+    if (!pedirPermiso) {
+      publicar({ servicio: "sin permiso" });
+      return false;
+    }
     const frente = await Location.requestForegroundPermissionsAsync();
-    if (frente.status !== "granted") {
+    if (frente.status !== "granted" || cerrada) {
       publicar({ servicio: "sin permiso" });
       return false;
     }
   }
 
   await Location.stopLocationUpdatesAsync(TAREA_VIEJA).catch(() => {});
+  if (cerrada || !tokenEnviado) return false;
   const ya = await Location.hasStartedLocationUpdatesAsync(TAREA_FONDO).catch(() => false);
   if (!ya || intervaloAplicado !== latidoSeg) {
     if (ya) await Location.stopLocationUpdatesAsync(TAREA_FONDO).catch(() => {});
+    if (cerrada || !tokenEnviado) return false;
     intervaloAplicado = latidoSeg;
     await Location.startLocationUpdatesAsync(TAREA_FONDO, {
       accuracy: Location.Accuracy.Balanced,
@@ -317,11 +365,27 @@ export async function arrancarServicio() {
         killServiceOnDestroy: false,
       },
     });
-    await new Promise((resolver) => setTimeout(resolver, 1500));
+    await new Promise((resolver) => setTimeout(resolver, 500));
   }
-  publicar({ servicio: "activo" });
+  if (cerrada || !tokenEnviado) return false;
+  const quedo = await Location.hasStartedLocationUpdatesAsync(TAREA_FONDO).catch(() => false);
+  publicar({ servicio: quedo ? "activo" : "detenido" });
   await leerUbicacionEnFondo();
-  return true;
+  return quedo;
+  } catch {
+    if (!cerrada) publicar({ servicio: "detenido" });
+    return false;
+  }
+}
+
+/** Aviso fijo de Android. Al terminar comprueba que el sistema lo dejó iniciado. */
+export function arrancarServicio(opciones) {
+  const corre = servicioCola.then(() => arrancarServicioAhora(opciones || {}));
+  servicioCola = corre.then(
+    () => {},
+    () => {},
+  );
+  return corre;
 }
 
 export async function pararServicio() {
@@ -330,32 +394,65 @@ export async function pararServicio() {
   await Location.stopLocationUpdatesAsync(TAREA_FONDO).catch(() => {});
 }
 
-/** Arranca el aviso al entrar. Lo detiene solo el logout. La consulta sigue aunque no haya GPS. */
+/** Arranca el aviso al entrar y comprueba que quedó iniciado. */
 export async function iniciarConexion(token) {
   if (!token) return false;
+  cerrada = false;
   const primera = tokenEnviado !== token;
   tokenEnviado = token;
+  const servicioOk = await arrancarServicio({ pedirPermiso: primera }).catch(() => false);
+  if (cerrada || tokenEnviado !== token) return false;
   if (primera || latidoVencido()) {
     cortarConsulta();
-    await encolar({
+    const ok = await encolar({
       tipo: "consulta",
       tarea: () => atenderServidor(token),
     });
-    programarConsulta(token);
+    programarConsulta(token, ok ? undefined : REINTENTO_MS);
   } else if (!consultaTimer) {
     programarConsulta(token);
   }
-  return arrancarServicio().catch(() => false);
+  return servicioOk;
 }
 
-/** Logout: para el aviso y deja de enviar. */
-export async function pararConexion() {
+/** La despierta un push de alta prioridad, aunque la pantalla esté apagada. */
+export async function despertarConsulta() {
+  if (cerrada) return false;
+  const sesion = await restaurarSesion();
+  const token = sesion?.token;
+  if (!token || cerrada) return false;
+  tokenEnviado = token;
+  const ok = await encolar({
+    tipo: "consulta",
+    tarea: () => atenderServidor(token),
+  });
+  if (!consultaTimer && !cerrada) programarConsulta(token, ok ? undefined : REINTENTO_MS);
+  await arrancarServicio().catch(() => false);
+  return true;
+}
+
+/** Logout: corta consultas, para el aviso y olvida la sesión local. */
+export function pararConexion() {
+  cerrada = true;
   cortarConsulta();
   tokenEnviado = "";
   ultimoLatidoOk = 0;
   ultimoGeoOk = 0;
   intervaloAplicado = 0;
+  if (corte) corte.abort();
+  corte = null;
+  const colgado = siguiente;
   siguiente = null;
-  await pararServicio();
-  publicar({ servicio: "detenido" });
+  if (colgado) colgado.resolve(false);
+  const olvido = olvidarSesion();
+  const corre = servicioCola.then(async () => {
+    await olvido;
+    await pararServicio();
+    publicar({ servicio: "detenido", ultimoError: "", nota: "", pendiente: false });
+  });
+  servicioCola = corre.then(
+    () => {},
+    () => {},
+  );
+  return corre;
 }

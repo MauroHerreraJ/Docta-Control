@@ -1,9 +1,11 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ActivityIndicator, AppState, Platform, StatusBar as RNStatusBar, View } from "react-native";
 import { StatusBar } from "expo-status-bar";
-import Escritorio from "./screen/Escritorio";
+import Configuracion from "./screen/Configuracion";
 import Login from "./screen/Login";
+import Principal from "./screen/Principal";
 import { iniciarConexion, pararConexion, suscribirDiagnostico } from "./util/fondo";
+import { activarPush } from "./util/push";
 import {
   restaurarSesion,
   salirVigilador,
@@ -18,6 +20,8 @@ export default function App() {
   const [saliendo, setSaliendo] = useState(false);
   const [enFondo, setEnFondo] = useState(false);
   const [diag, setDiag] = useState(null);
+  const [pagina, setPagina] = useState("principal");
+  const sesionViva = useRef(false);
 
   useEffect(() => {
     let vivo = true;
@@ -50,6 +54,7 @@ export default function App() {
   useEffect(() => {
     const token = usuario?.token;
     if (!token) return undefined;
+    sesionViva.current = true;
     let vivo = true;
     iniciarConexion(token)
       .then((ok) => {
@@ -58,16 +63,18 @@ export default function App() {
       .catch(() => {
         if (vivo) setEnFondo(false);
       });
+    activarPush(token).catch(() => {});
     const off = suscribirDiagnostico((dato) => {
       if (!vivo) return;
       setDiag(dato);
       setEnFondo(dato.servicio === "activo");
     });
     const estado = AppState.addEventListener("change", (siguiente) => {
-      if (siguiente === "active") iniciarConexion(token).catch(() => {});
+      if (siguiente === "active" && sesionViva.current) iniciarConexion(token).catch(() => {});
     });
     return () => {
       vivo = false;
+      sesionViva.current = false;
       off();
       estado.remove();
     };
@@ -76,6 +83,8 @@ export default function App() {
   const salir = async () => {
     if (saliendo) return;
     setSaliendo(true);
+    sesionViva.current = false;
+    setPagina("principal");
     const token = usuario?.token;
     await pararConexion();
     setUsuario(null);
@@ -91,13 +100,22 @@ export default function App() {
           <ActivityIndicator size="large" color="#0F76C4" />
         </View>
       ) : usuario ? (
-        <Escritorio
-          usuario={usuario}
-          onSalir={salir}
-          saliendo={saliendo}
-          enFondo={enFondo}
-          diag={diag}
-        />
+        pagina === "configuracion" ? (
+          <Configuracion
+            usuario={usuario}
+            onSalir={salir}
+            saliendo={saliendo}
+            enFondo={enFondo}
+            diag={diag}
+            onVolver={() => setPagina("principal")}
+          />
+        ) : (
+          <Principal
+            onSalir={salir}
+            saliendo={saliendo}
+            onConfiguracion={() => setPagina("configuracion")}
+          />
+        )
       ) : (
         <Login onIngresar={setUsuario} />
       )}

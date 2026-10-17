@@ -64,10 +64,17 @@ export async function olvidarSesion() {
   await AsyncStorage.removeItem(CLAVE_SESION).catch(() => {});
 }
 
-async function pedir(path, { method, body, token, timeoutMs = 20000 }) {
+async function pedir(path, { method, body, token, timeoutMs = 20000, signal }) {
   const deviceId = await idDeEsteCelular();
   const control = new AbortController();
-  const tope = setTimeout(() => control.abort(), timeoutMs);
+  let vencio = false;
+  const alCorte = () => control.abort();
+  if (signal?.aborted) alCorte();
+  else signal?.addEventListener("abort", alCorte);
+  const tope = setTimeout(() => {
+    vencio = true;
+    control.abort();
+  }, timeoutMs);
   let res;
   try {
     res = await fetch(`${apiDe()}${path}`, {
@@ -84,13 +91,20 @@ async function pedir(path, { method, body, token, timeoutMs = 20000 }) {
       signal: control.signal,
     });
   } catch (error) {
+    const cancelada = Boolean(signal?.aborted) && !vencio;
     const fallo = new Error(
-      error?.name === "AbortError" ? "El servidor no contestó." : "No se pudo conectar con el servidor.",
+      cancelada
+        ? "Consulta cancelada."
+        : error?.name === "AbortError"
+          ? "El servidor no contestó."
+          : "No se pudo conectar con el servidor.",
     );
     fallo.status = 0;
+    fallo.cancelada = cancelada;
     throw fallo;
   } finally {
     clearTimeout(tope);
+    signal?.removeEventListener("abort", alCorte);
   }
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
@@ -136,27 +150,39 @@ export async function verificarSesion(token) {
   return pedir("/api/verify", { method: "GET", token });
 }
 
-export async function mantenerSesion(token) {
+export async function mantenerSesion(token, signal) {
   const deviceId = await idDeEsteCelular();
   return pedir("/api/geo/keepalive", {
     method: "POST",
     token,
+    signal,
     body: { deviceId, platform: Platform.OS },
   });
 }
 
+/** Guarda el token FCM para que el servidor pueda despertar este celular. */
+export async function registrarTokenPush(tokenSesion, fcmToken) {
+  const limpio = String(fcmToken || "").trim();
+  if (!tokenSesion || !limpio) return null;
+  return pedir("/api/push/token", {
+    method: "POST",
+    token: tokenSesion,
+    body: { token: limpio, deviceId: await idDeEsteCelular() },
+  });
+}
+
 /** El celular pregunta si el servidor tiene una solicitud. No manda la posición. */
-export async function consultarSolicitud(token) {
-  return mantenerSesion(token);
+export async function consultarSolicitud(token, signal) {
+  return mantenerSesion(token, signal);
 }
 
 /** Confirma la solicitud del servidor con la posición. */
-export async function responderSolicitud(token, punto) {
-  return responderConGeo(token, punto);
+export async function responderSolicitud(token, punto, signal) {
+  return responderConGeo(token, punto, signal);
 }
 
 /** Respuesta al pedido del server: la posición para el mapa. */
-export async function responderConGeo(token, punto) {
+export async function responderConGeo(token, punto, signal) {
   const lat = Number(punto?.lat);
   const lng = Number(punto?.lng);
   if (!token || !Number.isFinite(lat) || !Number.isFinite(lng)) return null;
@@ -165,6 +191,7 @@ export async function responderConGeo(token, punto) {
   return pedir("/api/geo/ping", {
     method: "POST",
     token,
+    signal,
     body: {
       deviceId,
       platform: Platform.OS,
