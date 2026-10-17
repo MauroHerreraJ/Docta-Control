@@ -1,26 +1,30 @@
 import { useEffect, useRef, useState } from "react";
-import { ActivityIndicator, AppState, Platform, StatusBar as RNStatusBar, View } from "react-native";
+import { ActivityIndicator, AppState, View } from "react-native";
 import { StatusBar } from "expo-status-bar";
+import { useMarco } from "./util/medida";
+import AvisoPush from "./screen/AvisoPush";
 import Configuracion from "./screen/Configuracion";
 import Login from "./screen/Login";
-import Principal from "./screen/Principal";
+import Principal, { MenuInferior } from "./screen/Principal";
+import RondaRecorrido from "./screen/RondaRecorrido";
+import Rondas from "./screen/Rondas";
 import { iniciarConexion, pararConexion, suscribirDiagnostico } from "./util/fondo";
-import { activarPush } from "./util/push";
+import { activarPush, cerrarAviso, olvidarPush, revisarAvisoAlVolver } from "./util/push";
 import {
   restaurarSesion,
   salirVigilador,
   verificarSesion,
 } from "./util/sesion";
 
-const ARRIBA = Platform.OS === "android" ? RNStatusBar.currentHeight || 24 : 54;
-
 export default function App() {
+  const { arriba, abajo } = useMarco();
   const [usuario, setUsuario] = useState(null);
   const [lista, setLista] = useState(true);
   const [saliendo, setSaliendo] = useState(false);
   const [enFondo, setEnFondo] = useState(false);
   const [diag, setDiag] = useState(null);
   const [pagina, setPagina] = useState("principal");
+  const [rondaId, setRondaId] = useState(null);
   const sesionViva = useRef(false);
 
   useEffect(() => {
@@ -70,7 +74,10 @@ export default function App() {
       setEnFondo(dato.servicio === "activo");
     });
     const estado = AppState.addEventListener("change", (siguiente) => {
-      if (siguiente === "active" && sesionViva.current) iniciarConexion(token).catch(() => {});
+      if (siguiente === "active" && sesionViva.current) {
+        iniciarConexion(token).catch(() => {});
+        revisarAvisoAlVolver().catch(() => {});
+      }
     });
     return () => {
       vivo = false;
@@ -85,6 +92,9 @@ export default function App() {
     setSaliendo(true);
     sesionViva.current = false;
     setPagina("principal");
+    setRondaId(null);
+    cerrarAviso();
+    olvidarPush();
     const token = usuario?.token;
     await pararConexion();
     setUsuario(null);
@@ -93,29 +103,66 @@ export default function App() {
   };
 
   return (
-    <View style={{ flex: 1, backgroundColor: "#F4FBFE", paddingTop: ARRIBA }}>
+    <View
+      style={{
+        flex: 1,
+        overflow: "hidden",
+        backgroundColor: usuario ? "#F5F6F8" : "#F4FBFE",
+        paddingTop: arriba,
+        paddingBottom: abajo,
+      }}
+    >
       <StatusBar style="dark" />
       {lista ? (
         <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
           <ActivityIndicator size="large" color="#0F76C4" />
         </View>
       ) : usuario ? (
-        pagina === "configuracion" ? (
-          <Configuracion
-            usuario={usuario}
-            onSalir={salir}
-            saliendo={saliendo}
-            enFondo={enFondo}
-            diag={diag}
-            onVolver={() => setPagina("principal")}
-          />
-        ) : (
-          <Principal
-            onSalir={salir}
-            saliendo={saliendo}
-            onConfiguracion={() => setPagina("configuracion")}
-          />
-        )
+        <View style={{ flex: 1 }}>
+          {pagina === "configuracion" ? (
+            <Configuracion
+              usuario={usuario}
+              onSalir={salir}
+              saliendo={saliendo}
+              enFondo={enFondo}
+              diag={diag}
+              onVolver={() => setPagina("principal")}
+            />
+          ) : pagina === "rondas" && rondaId ? (
+            <RondaRecorrido
+              token={usuario.token}
+              rondaId={rondaId}
+              onVolver={() => setRondaId(null)}
+            />
+          ) : pagina === "rondas" ? (
+            <Rondas
+              token={usuario.token}
+              onVolver={() => setPagina("principal")}
+              onAbrir={(id) => setRondaId(id)}
+            />
+          ) : (
+            <Principal
+              usuario={usuario}
+              onSalir={salir}
+              saliendo={saliendo}
+              onAbrirRondas={() => {
+                setRondaId(null);
+                setPagina("rondas");
+              }}
+            />
+          )}
+          {pagina === "principal" || pagina === "configuracion" ? (
+            <MenuInferior
+              activo={pagina === "configuracion" ? "configuracion" : "home"}
+              onHome={() => {
+                setRondaId(null);
+                setPagina("principal");
+              }}
+              onConfiguracion={() => setPagina("configuracion")}
+            />
+          ) : null}
+          <AvisoPush />
+        </View>
       ) : (
         <Login onIngresar={setUsuario} />
       )}

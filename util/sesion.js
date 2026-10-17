@@ -30,6 +30,12 @@ const CLIENT = "5-doctacontrol vigicontrol-app";
 const CLAVE_SESION = "@docta5_sesion";
 const CLAVE_DEVICE = "@docta5_device";
 
+let sesionEnMemoria = null;
+
+export function sesionGuardadaAhora() {
+  return sesionEnMemoria;
+}
+
 function mensajeDe(data, respaldo) {
   const raw = data?.message;
   if (Array.isArray(raw) && raw[0]) return String(raw[0]);
@@ -54,13 +60,16 @@ export async function restaurarSesion() {
   try {
     const raw = await AsyncStorage.getItem(CLAVE_SESION);
     const data = raw ? JSON.parse(raw) : null;
-    return data?.token ? data : null;
+    sesionEnMemoria = data?.token ? data : null;
+    return sesionEnMemoria;
   } catch {
+    sesionEnMemoria = null;
     return null;
   }
 }
 
 export async function olvidarSesion() {
+  sesionEnMemoria = null;
   await AsyncStorage.removeItem(CLAVE_SESION).catch(() => {});
 }
 
@@ -142,6 +151,7 @@ export async function ingresarVigilador(usuario, clave) {
   if (!data?.token) {
     throw new Error("El servidor no devolvió la sesión.");
   }
+  sesionEnMemoria = data;
   await AsyncStorage.setItem(CLAVE_SESION, JSON.stringify(data));
   return data;
 }
@@ -201,6 +211,60 @@ export async function responderConGeo(token, punto, signal) {
       ...(Number.isFinite(accuracy) && accuracy >= 0 ? { accuracy: Math.round(accuracy) } : {}),
     },
   });
+}
+
+/** El cartel de hombre vivo: cumplido si tocó Acá estoy, no cumplido si se cerró solo. */
+export async function informarHombreVivo(token, { clientId, programaId, cumplio, punto }) {
+  if (!token) return null;
+  const id = String(clientId || "").trim();
+  const body = {
+    respondio: Boolean(cumplio),
+  };
+  if (id) body.clientId = id;
+  if (programaId) body.programaId = String(programaId);
+  const lat = Number(punto?.lat);
+  const lng = Number(punto?.lng);
+  if (Number.isFinite(lat) && Number.isFinite(lng)) {
+    body.lat = lat;
+    body.lng = lng;
+    const accuracy = Number(punto?.accuracy);
+    if (Number.isFinite(accuracy) && accuracy >= 0) body.accuracy = Math.round(accuracy);
+  }
+  return pedir("/api/hombre-vivo/mias", { method: "POST", token, body });
+}
+
+/** Rondas del turno, con puntos y marcas. */
+export async function rondasDelTurno(token) {
+  if (!token) return null;
+  return pedir(`/api/rondas/mias?_t=${Date.now()}`, { method: "GET", token });
+}
+
+export async function iniciarRonda(token, rondaId) {
+  const id = String(rondaId || "").trim();
+  if (!token || !id) return null;
+  return pedir(`/api/rondas/mias/${encodeURIComponent(id)}/iniciar`, { method: "POST", token, body: {} });
+}
+
+export async function marcarPuntoRonda(token, rondaId, body) {
+  const id = String(rondaId || "").trim();
+  if (!token || !id) return null;
+  return pedir(`/api/rondas/mias/${encodeURIComponent(id)}/marcar`, {
+    method: "POST",
+    token,
+    body: body || {},
+  });
+}
+
+export async function cerrarRonda(token, rondaId) {
+  const id = String(rondaId || "").trim();
+  if (!token || !id) return null;
+  return pedir(`/api/rondas/mias/${encodeURIComponent(id)}/cerrar`, { method: "POST", token, body: {} });
+}
+
+/** Avisa al panel que en el celular tocaron Acá estoy, para cerrar ese push. */
+export async function reconocerPush(token) {
+  if (!token) return null;
+  return pedir("/api/push/visto", { method: "POST", token, body: {} });
 }
 
 export async function salirVigilador(token) {

@@ -44,7 +44,17 @@
         {
           "defaultChannel": "aviso-panel"
         }
-      ]
+      ],
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Docta usa la cámara para leer los QR de la ronda.",
+          "microphonePermission": false,
+          "recordAudioAndroid": false,
+          "barcodeScannerEnabled": true
+        }
+      ],
+      "react-native-nfc-manager"
     ],
     "web": {
       "favicon": "./assets/favicon.png"

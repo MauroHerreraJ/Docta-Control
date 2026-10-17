@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { AppState, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { pedirSinAhorro, pedirUbicacionTodoElTiempo } from "../util/fondo";
+import { pedirSobreOtrasApps, puedeSobreOtrasApps } from "../util/overlay";
 import { escucharPush } from "../util/push";
 import { nombreDe } from "../util/sesion";
 
@@ -40,8 +41,26 @@ export default function Configuracion({ usuario, onSalir, saliendo, enFondo, dia
   const nombre = nombreDe(usuario);
   const latido = diag?.latidoSeg || 60;
   const [push, setPush] = useState(null);
+  const [sobreApps, setSobreApps] = useState(false);
 
   useEffect(() => escucharPush(setPush), []);
+
+  useEffect(() => {
+    let vivo = true;
+    const leer = () => {
+      puedeSobreOtrasApps().then((ok) => {
+        if (vivo) setSobreApps(ok);
+      });
+    };
+    leer();
+    const estado = AppState.addEventListener("change", (siguiente) => {
+      if (siguiente === "active") leer();
+    });
+    return () => {
+      vivo = false;
+      estado.remove();
+    };
+  }, []);
 
   return (
     <View style={styles.fondo}>
@@ -54,6 +73,7 @@ export default function Configuracion({ usuario, onSalir, saliendo, enFondo, dia
         </Pressable>
       </View>
 
+      <ScrollView style={styles.lista} contentContainerStyle={styles.listaContenido} showsVerticalScrollIndicator={false}>
       <Text style={styles.hola}>Hola</Text>
       <Text style={styles.nombre}>{nombre}</Text>
       <Text style={styles.rol}>Vigilador</Text>
@@ -74,6 +94,14 @@ export default function Configuracion({ usuario, onSalir, saliendo, enFondo, dia
         <Text style={styles.linea}>{textoHttp(diag)}</Text>
         {diag?.ultimoError ? <Text style={styles.error}>{diag.ultimoError}</Text> : null}
         {diag?.nota ? <Text style={styles.linea}>{diag.nota}</Text> : null}
+        <Text style={styles.linea}>
+          {sobreApps
+            ? "Puede mostrarse sobre otras apps."
+            : "Sin «Mostrar sobre otras apps» el push no abre la pantalla si está minimizada."}
+        </Text>
+        <Pressable style={styles.extra} onPress={() => pedirSobreOtrasApps()}>
+          <Text style={styles.extraTexto}>Mostrar sobre otras apps</Text>
+        </Pressable>
         <Pressable style={styles.extra} onPress={() => pedirSinAhorro()}>
           <Text style={styles.extraTexto}>Evitar que Android la duerma</Text>
         </Pressable>
@@ -81,6 +109,7 @@ export default function Configuracion({ usuario, onSalir, saliendo, enFondo, dia
           <Text style={styles.extraTexto}>Ubicación todo el tiempo</Text>
         </Pressable>
       </View>
+      </ScrollView>
     </View>
   );
 }
@@ -95,7 +124,13 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingBottom: 18,
+    paddingBottom: 12,
+  },
+  lista: {
+    flex: 1,
+  },
+  listaContenido: {
+    paddingBottom: 24,
   },
   volver: {
     color: "#0F76C4",
