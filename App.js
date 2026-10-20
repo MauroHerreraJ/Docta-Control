@@ -1,10 +1,13 @@
 import { useEffect, useRef, useState } from "react";
-import { ActivityIndicator, AppState, View } from "react-native";
+import { ActivityIndicator, AppState, Dimensions, Keyboard, Platform, View } from "react-native";
 import { StatusBar } from "expo-status-bar";
 import { useMarco } from "./util/medida";
 import AvisoPush from "./screen/AvisoPush";
 import Configuracion from "./screen/Configuracion";
 import Login from "./screen/Login";
+import Accesos from "./screen/Accesos";
+import Asignaciones from "./screen/Asignaciones";
+import Novedades from "./screen/Novedades";
 import Principal, { MenuInferior } from "./screen/Principal";
 import RondaRecorrido from "./screen/RondaRecorrido";
 import Rondas from "./screen/Rondas";
@@ -16,8 +19,18 @@ import {
   verificarSesion,
 } from "./util/sesion";
 
+function altoDelTeclado(evento) {
+  const alto = Number(evento?.endCoordinates?.height);
+  const techo = Number(evento?.endCoordinates?.screenY);
+  const pantalla = Dimensions.get("screen").height;
+  const porTecho = Number.isFinite(techo) ? pantalla - techo : 0;
+  const porAlto = Number.isFinite(alto) ? alto : 0;
+  return Math.max(0, Math.round(Math.max(porAlto, porTecho)));
+}
+
 export default function App() {
   const { arriba, abajo } = useMarco();
+  const [teclado, setTeclado] = useState(0);
   const [usuario, setUsuario] = useState(null);
   const [lista, setLista] = useState(true);
   const [saliendo, setSaliendo] = useState(false);
@@ -52,6 +65,17 @@ export default function App() {
     });
     return () => {
       vivo = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    const mostrar = (evento) => setTeclado(altoDelTeclado(evento));
+    const ocultar = () => setTeclado(0);
+    const alAbrir = Keyboard.addListener(Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow", mostrar);
+    const alCerrar = Keyboard.addListener(Platform.OS === "ios" ? "keyboardWillHide" : "keyboardDidHide", ocultar);
+    return () => {
+      alAbrir.remove();
+      alCerrar.remove();
     };
   }, []);
 
@@ -109,7 +133,7 @@ export default function App() {
         overflow: "hidden",
         backgroundColor: usuario ? "#F5F6F8" : "#F4FBFE",
         paddingTop: arriba,
-        paddingBottom: abajo,
+        paddingBottom: teclado > 0 ? teclado : abajo,
       }}
     >
       <StatusBar style="dark" />
@@ -128,6 +152,12 @@ export default function App() {
               diag={diag}
               onVolver={() => setPagina("principal")}
             />
+          ) : pagina === "asignaciones" ? (
+            <Asignaciones token={usuario.token} onVolver={() => setPagina("principal")} />
+          ) : pagina === "accesos" ? (
+            <Accesos token={usuario.token} onVolver={() => setPagina("principal")} />
+          ) : pagina === "novedades" ? (
+            <Novedades token={usuario.token} onVolver={() => setPagina("principal")} />
           ) : pagina === "rondas" && rondaId ? (
             <RondaRecorrido
               token={usuario.token}
@@ -149,6 +179,9 @@ export default function App() {
                 setRondaId(null);
                 setPagina("rondas");
               }}
+              onAbrirAsignaciones={() => setPagina("asignaciones")}
+              onAbrirAccesos={() => setPagina("accesos")}
+              onAbrirNovedades={() => setPagina("novedades")}
             />
           )}
           {pagina === "principal" || pagina === "configuracion" ? (

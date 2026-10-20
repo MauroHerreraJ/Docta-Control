@@ -48,10 +48,17 @@ function nuevoId() {
   return `d${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`;
 }
 
+function codigoDe(valor) {
+  return String(valor || "").replace(/^5-doctacontrol:/, "").trim();
+}
+
 export async function idDeEsteCelular() {
-  const guardado = await AsyncStorage.getItem(CLAVE_DEVICE).catch(() => "");
-  if (guardado) return guardado;
-  const id = `5-doctacontrol:${nuevoId()}`;
+  const guardado = codigoDe(await AsyncStorage.getItem(CLAVE_DEVICE).catch(() => ""));
+  if (guardado) {
+    await AsyncStorage.setItem(CLAVE_DEVICE, guardado).catch(() => {});
+    return guardado;
+  }
+  const id = nuevoId();
   await AsyncStorage.setItem(CLAVE_DEVICE, id).catch(() => {});
   return id;
 }
@@ -125,6 +132,46 @@ async function pedir(path, { method, body, token, timeoutMs = 20000, signal }) {
   return data;
 }
 
+async function pedirForm(path, form, token) {
+  const deviceId = await idDeEsteCelular();
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", `${apiDe()}${path}`);
+    xhr.setRequestHeader("Accept", "application/json");
+    xhr.setRequestHeader("X-Auth-Mode", "bearer");
+    xhr.setRequestHeader("X-Client-Info", CLIENT);
+    xhr.setRequestHeader("X-Device-Id", deviceId);
+    if (token) xhr.setRequestHeader("Authorization", `Bearer ${token}`);
+    xhr.timeout = 60000;
+    xhr.onload = () => {
+      let data = {};
+      try {
+        data = JSON.parse(xhr.responseText || "{}");
+      } catch {
+        data = {};
+      }
+      if (xhr.status >= 200 && xhr.status < 300) {
+        resolve(data);
+        return;
+      }
+      const error = new Error(mensajeDe(data, "No se pudo completar."));
+      error.status = xhr.status;
+      reject(error);
+    };
+    xhr.onerror = () => {
+      const error = new Error("No se pudo conectar con el servidor.");
+      error.status = 0;
+      reject(error);
+    };
+    xhr.ontimeout = () => {
+      const error = new Error("La subida tardó demasiado. Probá de nuevo.");
+      error.status = 0;
+      reject(error);
+    };
+    xhr.send(form);
+  });
+}
+
 /** Login contra el server. Entra solo un usuario con rol vigilador. */
 export async function ingresarVigilador(usuario, clave) {
   const login = String(usuario || "").trim();
@@ -158,6 +205,20 @@ export async function ingresarVigilador(usuario, clave) {
 
 export async function verificarSesion(token) {
   return pedir("/api/verify", { method: "GET", token });
+}
+
+export async function cambiarClave(token, actual, nueva) {
+  return pedir("/api/profile/password", {
+    method: "PUT",
+    token,
+    body: { currentPassword: actual, newPassword: nueva },
+  });
+}
+
+/** Perfil del vigilador logueado, incluida la foto del servidor. */
+export async function perfilDelVigilador(token) {
+  if (!token) return null;
+  return pedir("/api/vigiladores/me", { method: "GET", token });
 }
 
 export async function mantenerSesion(token, signal) {
@@ -259,6 +320,79 @@ export async function cerrarRonda(token, rondaId) {
   const id = String(rondaId || "").trim();
   if (!token || !id) return null;
   return pedir(`/api/rondas/mias/${encodeURIComponent(id)}/cerrar`, { method: "POST", token, body: {} });
+}
+
+/** Ingresos registrados hoy en el objetivo del turno. */
+export async function accesosDelTurno(token) {
+  if (!token) return null;
+  return pedir(`/api/accesos/mias?_t=${Date.now()}`, { method: "GET", token });
+}
+
+export async function crearAcceso(token, body) {
+  if (!token) return null;
+  return pedir("/api/accesos/mias", { method: "POST", token, body: body || {} });
+}
+
+/** Libro de novedades del turno del vigilador. */
+export async function novedadesDelTurno(token) {
+  if (!token) return null;
+  return pedir(`/api/novedades/mias?_t=${Date.now()}`, { method: "GET", token });
+}
+
+export async function crearNovedad(token, { texto, at, clientId, fotos = [], audio } = {}) {
+  if (!token) return null;
+  const fotosOk = (fotos || []).filter((foto) => foto?.uri).slice(0, 3);
+  const hayArchivos = fotosOk.length > 0 || Boolean(audio?.uri);
+  if (!hayArchivos) {
+    return pedir("/api/novedades/mias", {
+      method: "POST",
+      token,
+      body: { texto, at, clientId },
+    });
+  }
+  const form = new FormData();
+  form.append("texto", String(texto || ""));
+  if (at) form.append("at", at);
+  if (clientId) form.append("clientId", clientId);
+  fotosOk.forEach((foto, index) => {
+    form.append("fotos", {
+      uri: foto.uri,
+      name: foto.name || `foto-${index}.jpg`,
+      type: foto.type || "image/jpeg",
+    });
+  });
+  if (audio?.uri) {
+    form.append("audio", {
+      uri: audio.uri,
+      name: audio.name || "novedad.m4a",
+      type: audio.type || "audio/mp4",
+    });
+  }
+  return pedirForm("/api/novedades/mias", form, token);
+}
+
+/** Tareas que el panel le mandó a este vigilador en el día. */
+export async function tareasDeHoy(token) {
+  if (!token) return null;
+  return pedir("/api/despachos/mios", { method: "GET", token });
+}
+
+export async function tareaPorId(token, id) {
+  const tareaId = String(id || "").trim();
+  if (!token || !tareaId) return null;
+  return pedir(`/api/despachos/${encodeURIComponent(tareaId)}`, { method: "GET", token });
+}
+
+/** aceptar, llegada, partida o finalizar. */
+export async function avanzarTarea(token, id, paso) {
+  const tareaId = String(id || "").trim();
+  const accion = String(paso || "").trim();
+  if (!token || !tareaId || !accion) return null;
+  return pedir(`/api/despachos/${encodeURIComponent(tareaId)}/${accion}`, {
+    method: "POST",
+    token,
+    body: {},
+  });
 }
 
 /** Avisa al panel que en el celular tocaron Acá estoy, para cerrar ese push. */

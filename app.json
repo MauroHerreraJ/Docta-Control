@@ -25,6 +25,7 @@
         "FOREGROUND_SERVICE",
         "FOREGROUND_SERVICE_LOCATION",
         "POST_NOTIFICATIONS",
+        "RECORD_AUDIO",
         "WAKE_LOCK"
       ]
     },
@@ -54,7 +55,22 @@
           "barcodeScannerEnabled": true
         }
       ],
-      "react-native-nfc-manager"
+      "react-native-nfc-manager",
+      [
+        "expo-local-authentication",
+        {
+          "faceIDPermission": "Docta usa la biometría para reconocer tu usuario. La clave se pide siempre."
+        }
+      ],
+      [
+        "expo-audio",
+        {
+          "microphonePermission": "Docta usa el micrófono para grabar la novedad.",
+          "recordAudioAndroid": true
+        }
+      ],
+      "expo-speech-recognition",
+      "expo-asset"
     ],
     "web": {
       "favicon": "./assets/favicon.png"

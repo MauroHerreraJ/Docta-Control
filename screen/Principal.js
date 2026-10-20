@@ -1,7 +1,14 @@
 import { useEffect, useState } from "react";
-import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Image, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { flushRondaQueue } from "../util/rondaQueue";
-import { nombreDe, rondasDelTurno } from "../util/sesion";
+import {
+  accesosDelTurno,
+  nombreDe,
+  novedadesDelTurno,
+  perfilDelVigilador,
+  rondasDelTurno,
+  tareasDeHoy,
+} from "../util/sesion";
 
 const TARJETAS = [
   {
@@ -161,9 +168,21 @@ export function MenuInferior({ activo, onHome, onConfiguracion }) {
   );
 }
 
-export default function Principal({ usuario, onSalir, saliendo, onAbrirRondas }) {
+export default function Principal({
+  usuario,
+  onSalir,
+  saliendo,
+  onAbrirRondas,
+  onAbrirAsignaciones,
+  onAbrirAccesos,
+  onAbrirNovedades,
+}) {
   const documento = String(usuario?.documento || "").trim();
+  const [foto, setFoto] = useState("");
   const [rondasActivas, setRondasActivas] = useState(null);
+  const [tareasCount, setTareasCount] = useState(null);
+  const [accesosHoy, setAccesosHoy] = useState(null);
+  const [novedadesCount, setNovedadesCount] = useState(null);
 
   useEffect(() => {
     const token = usuario?.token;
@@ -178,17 +197,72 @@ export default function Principal({ usuario, onSalir, saliendo, onAbrirRondas })
         setRondasActivas(abiertas);
       })
       .catch(() => {});
+    tareasDeHoy(token)
+      .then((data) => {
+        if (!vivo || !data) return;
+        const pendientes = Array.isArray(data.pendientes) ? data.pendientes.length : 0;
+        const enCurso = Array.isArray(data.activos) ? data.activos.length : 0;
+        setTareasCount(pendientes + enCurso);
+      })
+      .catch(() => {});
+    accesosDelTurno(token)
+      .then((data) => {
+        if (!vivo || !data) return;
+        setAccesosHoy(Number(data.hoy) || 0);
+      })
+      .catch(() => {});
+    novedadesDelTurno(token)
+      .then((data) => {
+        if (!vivo || !data) return;
+        setNovedadesCount((data.novedades || []).length);
+      })
+      .catch(() => {});
+    perfilDelVigilador(token)
+      .then((data) => {
+        if (!vivo || !data) return;
+        const url = String(data?.perfil?.foto || data?.vigilador?.foto || "").trim();
+        setFoto(url);
+      })
+      .catch(() => {});
     return () => {
       vivo = false;
     };
   }, [usuario?.token]);
 
   const estadoDe = (item) => {
-    if (item.titulo !== "Rondas") return item.estado;
-    if (rondasActivas == null) return "…";
-    if (rondasActivas === 1) return "1 activa";
-    if (rondasActivas > 1) return `${rondasActivas} activas`;
-    return "Sin activas";
+    if (item.titulo === "Rondas") {
+      if (rondasActivas == null) return "…";
+      if (rondasActivas === 1) return "1 activa";
+      if (rondasActivas > 1) return `${rondasActivas} activas`;
+      return "Sin activas";
+    }
+    if (item.titulo === "Asignaciones") {
+      if (tareasCount == null) return "…";
+      if (tareasCount === 1) return "1 pendiente";
+      if (tareasCount > 1) return `${tareasCount} pendientes`;
+      return "Sin pendientes";
+    }
+    if (item.titulo === "Accesos") {
+      if (accesosHoy == null) return "…";
+      if (accesosHoy === 1) return "1 hoy";
+      if (accesosHoy > 1) return `${accesosHoy} hoy`;
+      return "0 hoy";
+    }
+    if (item.titulo === "Novedades") {
+      if (novedadesCount == null) return "…";
+      if (novedadesCount === 1) return "1 en el turno";
+      if (novedadesCount > 1) return `${novedadesCount} en el turno`;
+      return "Sin novedades";
+    }
+    return item.estado;
+  };
+
+  const abrirDe = (titulo) => {
+    if (titulo === "Rondas") return onAbrirRondas;
+    if (titulo === "Asignaciones") return onAbrirAsignaciones;
+    if (titulo === "Accesos") return onAbrirAccesos;
+    if (titulo === "Novedades") return onAbrirNovedades;
+    return null;
   };
   return (
     <View style={styles.fondo}>
@@ -201,8 +275,18 @@ export default function Principal({ usuario, onSalir, saliendo, onAbrirRondas })
       >
         <View style={styles.perfil}>
           <View style={styles.avatar}>
-            <View style={styles.avatarCabeza} />
-            <View style={styles.avatarCuerpo} />
+            {foto ? (
+              <Image
+                source={{ uri: foto }}
+                style={styles.avatarFoto}
+                onError={() => setFoto("")}
+              />
+            ) : (
+              <>
+                <View style={styles.avatarCabeza} />
+                <View style={styles.avatarCuerpo} />
+              </>
+            )}
           </View>
           <View style={styles.perfilTexto}>
             <Text style={styles.nombre} numberOfLines={1}>
@@ -245,7 +329,8 @@ export default function Principal({ usuario, onSalir, saliendo, onAbrirRondas })
                 <Text style={[styles.tarjetaEstado, { color: item.color }]}>{estadoDe(item)}</Text>
               </>
             );
-            if (item.titulo !== "Rondas") {
+            const abrir = abrirDe(item.titulo);
+            if (!abrir) {
               return (
                 <View key={item.titulo} style={styles.tarjeta}>
                   {cuerpo}
@@ -253,7 +338,7 @@ export default function Principal({ usuario, onSalir, saliendo, onAbrirRondas })
               );
             }
             return (
-              <Pressable key={item.titulo} style={styles.tarjeta} onPress={onAbrirRondas}>
+              <Pressable key={item.titulo} style={styles.tarjeta} onPress={abrir}>
                 {cuerpo}
               </Pressable>
             );
@@ -278,28 +363,28 @@ const styles = StyleSheet.create({
     color: "#1A1D2E",
     fontSize: 20,
     fontWeight: "800",
-    paddingBottom: 12,
+    paddingBottom: 6,
   },
   lista: {
     flex: 1,
   },
   contenido: {
     paddingHorizontal: 16,
-    paddingBottom: 18,
+    paddingBottom: 10,
   },
   perfil: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 12,
+    gap: 10,
     backgroundColor: "#2E3A66",
-    borderRadius: 22,
-    paddingHorizontal: 14,
-    paddingVertical: 14,
+    borderRadius: 18,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
   },
   avatar: {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     backgroundColor: "#C4A484",
     overflow: "hidden",
     alignItems: "center",
@@ -318,6 +403,10 @@ const styles = StyleSheet.create({
     borderTopRightRadius: 16,
     backgroundColor: "#8C6239",
     marginTop: 4,
+  },
+  avatarFoto: {
+    width: 44,
+    height: 44,
   },
   perfilTexto: {
     flex: 1,
@@ -370,14 +459,14 @@ const styles = StyleSheet.create({
     fontWeight: "700",
   },
   objetivo: {
-    marginTop: 12,
+    marginTop: 8,
     flexDirection: "row",
     alignItems: "center",
     gap: 10,
     backgroundColor: "#FFFFFF",
-    borderRadius: 18,
-    paddingHorizontal: 14,
-    paddingVertical: 14,
+    borderRadius: 16,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
     shadowColor: "#1A2744",
     shadowOpacity: 0.06,
     shadowRadius: 10,
@@ -411,8 +500,8 @@ const styles = StyleSheet.create({
     letterSpacing: 0.3,
   },
   seccion: {
-    marginTop: 18,
-    marginBottom: 10,
+    marginTop: 10,
+    marginBottom: 6,
     color: "#1C2434",
     fontSize: 16,
     fontWeight: "800",
@@ -421,15 +510,15 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     flexWrap: "wrap",
     justifyContent: "space-between",
-    rowGap: 12,
+    rowGap: 8,
   },
   tarjeta: {
     width: "48%",
     backgroundColor: "#FFFFFF",
-    borderRadius: 18,
-    paddingHorizontal: 14,
-    paddingTop: 14,
-    paddingBottom: 12,
+    borderRadius: 16,
+    paddingHorizontal: 12,
+    paddingTop: 10,
+    paddingBottom: 8,
     shadowColor: "#1A2744",
     shadowOpacity: 0.06,
     shadowRadius: 10,
@@ -437,9 +526,9 @@ const styles = StyleSheet.create({
     elevation: 2,
   },
   tarjetaTitulo: {
-    marginTop: 10,
+    marginTop: 6,
     color: "#1C2434",
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: "800",
   },
   tarjetaDetalle: {
@@ -448,13 +537,13 @@ const styles = StyleSheet.create({
     fontSize: 12,
   },
   tarjetaEstado: {
-    marginTop: 8,
-    fontSize: 13,
+    marginTop: 4,
+    fontSize: 12,
     fontWeight: "800",
   },
   emergencia: {
-    marginTop: 16,
-    height: 54,
+    marginTop: 10,
+    height: 46,
     borderRadius: 16,
     backgroundColor: "#F04438",
     alignItems: "center",

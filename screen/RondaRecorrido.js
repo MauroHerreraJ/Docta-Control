@@ -14,6 +14,7 @@ import {
 } from "react-native";
 import { requireOptionalNativeModule } from "expo-modules-core";
 import * as Location from "expo-location";
+import BotonVolver from "./BotonVolver";
 import { useMedida } from "../util/medida";
 import { CERCA_M, distanceMeters, formatMetros, RADIO_M } from "../util/rondaGeo";
 import { buildRondaMapHtml } from "../util/rondaMapHtml";
@@ -537,12 +538,7 @@ export default function RondaRecorrido({ token, rondaId, onVolver }) {
     <View style={styles.root}>
       <Text style={[styles.marca, { fontSize: m(18), marginTop: m(12) }]}>Vigilantes</Text>
       <View style={[styles.cabeza, { paddingHorizontal: m(16), marginTop: m(6) }]}>
-        <Pressable style={styles.volver} onPress={onVolver} hitSlop={8}>
-          <Icono name="chevron-back" size={m(22)} color="#222266" />
-          <Text style={[styles.titulo, { fontSize: m(18) }]} numberOfLines={1}>
-            {vista?.nombre || "Ronda"}
-          </Text>
-        </Pressable>
+        <BotonVolver m={m} titulo={vista?.nombre || "Ronda"} onPress={onVolver} />
       </View>
 
       {cargando && !vista ? (

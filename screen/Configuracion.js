@@ -1,9 +1,21 @@
 import { useEffect, useState } from "react";
-import { AppState, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import {
+  ActivityIndicator,
+  AppState,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from "react-native";
 import { pedirSinAhorro, pedirUbicacionTodoElTiempo } from "../util/fondo";
 import { pedirSobreOtrasApps, puedeSobreOtrasApps } from "../util/overlay";
 import { escucharPush } from "../util/push";
-import { nombreDe } from "../util/sesion";
+import BotonVolver from "./BotonVolver";
+import { cambiarClave, nombreDe } from "../util/sesion";
+
+const CLAVE_OCULTA = "25361411";
 
 function horaDe(iso) {
   if (!iso) return "todavía no";
@@ -37,7 +49,7 @@ function textoPush(push) {
   return "Registrando push.";
 }
 
-export default function Configuracion({ usuario, onSalir, saliendo, enFondo, diag, onVolver }) {
+function Tecnica({ usuario, onSalir, saliendo, enFondo, diag, onVolver }) {
   const nombre = nombreDe(usuario);
   const latido = diag?.latidoSeg || 60;
   const [push, setPush] = useState(null);
@@ -65,9 +77,7 @@ export default function Configuracion({ usuario, onSalir, saliendo, enFondo, dia
   return (
     <View style={styles.fondo}>
       <View style={styles.barra}>
-        <Pressable onPress={onVolver} hitSlop={8}>
-          <Text style={styles.volver}>Volver</Text>
-        </Pressable>
+        <BotonVolver onPress={onVolver} />
         <Pressable onPress={onSalir} disabled={saliendo} hitSlop={8}>
           <Text style={styles.salir}>{saliendo ? "Saliendo..." : "Salir"}</Text>
         </Pressable>
@@ -109,6 +119,146 @@ export default function Configuracion({ usuario, onSalir, saliendo, enFondo, dia
           <Text style={styles.extraTexto}>Ubicación todo el tiempo</Text>
         </Pressable>
       </View>
+      </ScrollView>
+    </View>
+  );
+}
+
+export default function Configuracion({ usuario, onSalir, saliendo, enFondo, diag, onVolver }) {
+  const [vista, setVista] = useState("clave");
+  const [actual, setActual] = useState("");
+  const [nueva, setNueva] = useState("");
+  const [repetir, setRepetir] = useState("");
+  const [codigo, setCodigo] = useState("");
+  const [error, setError] = useState("");
+  const [guardando, setGuardando] = useState(false);
+
+  const guardar = async () => {
+    const claveActual = actual.trim();
+    const claveNueva = nueva.trim();
+    if (!claveActual || !claveNueva) {
+      setError("Completá la clave actual y la nueva.");
+      return;
+    }
+    if (claveNueva.length < 8) {
+      setError("La clave nueva tiene que tener al menos 8 caracteres.");
+      return;
+    }
+    if (claveNueva !== repetir.trim()) {
+      setError("La clave nueva no coincide.");
+      return;
+    }
+    setError("");
+    setGuardando(true);
+    try {
+      await cambiarClave(usuario?.token, claveActual, claveNueva);
+      await onSalir();
+    } catch (err) {
+      setError(err?.message || "No se pudo cambiar la clave.");
+      setGuardando(false);
+    }
+  };
+
+  const abrirOculta = () => {
+    if (codigo.trim() !== CLAVE_OCULTA) {
+      setError("Clave incorrecta.");
+      return;
+    }
+    setError("");
+    setCodigo("");
+    setVista("tecnica");
+  };
+
+  if (vista === "tecnica") {
+    return (
+      <Tecnica
+        usuario={usuario}
+        onSalir={onSalir}
+        saliendo={saliendo}
+        enFondo={enFondo}
+        diag={diag}
+        onVolver={() => setVista("clave")}
+      />
+    );
+  }
+
+  return (
+    <View style={styles.fondo}>
+      <View style={styles.barra}>
+        <BotonVolver onPress={onVolver} />
+        <Pressable onPress={onSalir} disabled={saliendo || guardando} hitSlop={8}>
+          <Text style={styles.salir}>{saliendo ? "Saliendo..." : "Salir"}</Text>
+        </Pressable>
+      </View>
+      <ScrollView
+        style={styles.lista}
+        contentContainerStyle={styles.listaContenido}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+      >
+        <Pressable onLongPress={() => setVista(vista === "candado" ? "clave" : "candado")} delayLongPress={700}>
+          <Text style={styles.titulo}>Configuración</Text>
+        </Pressable>
+        <Text style={styles.detalle}>Cambiá la clave de ingreso. Después hay que entrar de nuevo.</Text>
+
+        <Text style={styles.etiqueta}>Clave actual</Text>
+        <TextInput
+          style={styles.campo}
+          value={actual}
+          onChangeText={setActual}
+          secureTextEntry
+          editable={!guardando}
+          autoCapitalize="none"
+        />
+        <Text style={styles.etiqueta}>Clave nueva</Text>
+        <TextInput
+          style={styles.campo}
+          value={nueva}
+          onChangeText={setNueva}
+          secureTextEntry
+          editable={!guardando}
+          autoCapitalize="none"
+        />
+        <Text style={styles.etiqueta}>Repetir clave nueva</Text>
+        <TextInput
+          style={styles.campo}
+          value={repetir}
+          onChangeText={setRepetir}
+          secureTextEntry
+          editable={!guardando}
+          autoCapitalize="none"
+        />
+
+        {vista === "candado" ? (
+          <>
+            <Text style={styles.etiqueta}>Código</Text>
+            <TextInput
+              style={styles.campo}
+              value={codigo}
+              onChangeText={setCodigo}
+              secureTextEntry
+              keyboardType="number-pad"
+              editable={!guardando}
+            />
+            <Pressable style={styles.extra} onPress={abrirOculta}>
+              <Text style={styles.extraTexto}>Abrir</Text>
+            </Pressable>
+          </>
+        ) : null}
+
+        {error ? <Text style={styles.error}>{error}</Text> : null}
+
+        <Pressable
+          style={[styles.boton, guardando && styles.botonOff]}
+          onPress={guardar}
+          disabled={guardando}
+        >
+          {guardando ? (
+            <ActivityIndicator color="#ffffff" />
+          ) : (
+            <Text style={styles.botonTexto}>Guardar clave</Text>
+          )}
+        </Pressable>
       </ScrollView>
     </View>
   );
@@ -200,6 +350,39 @@ const styles = StyleSheet.create({
   extraTexto: {
     color: "#0F76C4",
     fontSize: 14,
+    fontWeight: "700",
+  },
+  etiqueta: {
+    marginTop: 16,
+    marginBottom: 6,
+    color: "#5C7A90",
+    fontSize: 13,
+    fontWeight: "700",
+  },
+  campo: {
+    backgroundColor: "#ffffff",
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#D7F1FC",
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    color: "#0B3A5B",
+    fontSize: 16,
+  },
+  boton: {
+    marginTop: 22,
+    backgroundColor: "#0F76C4",
+    borderRadius: 14,
+    minHeight: 48,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  botonOff: {
+    opacity: 0.6,
+  },
+  botonTexto: {
+    color: "#ffffff",
+    fontSize: 16,
     fontWeight: "700",
   },
 });

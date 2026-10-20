@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import BotonVolver from "./BotonVolver";
 import { useMedida } from "../util/medida";
 import { flushRondaQueue, getRondaQueue } from "../util/rondaQueue";
 import { rondasDelTurno } from "../util/sesion";
@@ -92,10 +93,7 @@ export default function Rondas({ token, onVolver, onAbrir }) {
     <View style={styles.root}>
       <Text style={[styles.marca, { fontSize: m(18), marginTop: m(12) }]}>Vigilantes</Text>
       <View style={[styles.cabeza, { paddingHorizontal: m(16), marginTop: m(6) }]}>
-        <Pressable style={styles.volver} onPress={onVolver} hitSlop={8}>
-          <Icono name="chevron-back" size={m(22)} color="#222266" />
-          <Text style={[styles.titulo, { fontSize: m(18) }]}>Rondas</Text>
-        </Pressable>
+        <BotonVolver m={m} titulo="Rondas" onPress={onVolver} />
       </View>
 
       {cargando && !data ? (
