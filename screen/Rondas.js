@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Alert, AppState, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import BotonVolver from "./BotonVolver";
 import { useMedida } from "../util/medida";
 import { flushRondaQueue, getRondaQueue } from "../util/rondaQueue";
@@ -84,6 +84,14 @@ export default function Rondas({ token, onVolver, onAbrir }) {
 
   useEffect(() => {
     cargar();
+    const timer = setInterval(cargar, 15000);
+    const estado = AppState.addEventListener("change", (siguiente) => {
+      if (siguiente === "active") cargar();
+    });
+    return () => {
+      clearInterval(timer);
+      estado.remove();
+    };
   }, [cargar]);
 
   const rondas = data?.rondas || [];
@@ -98,7 +106,7 @@ export default function Rondas({ token, onVolver, onAbrir }) {
 
       {cargando && !data ? (
         <View style={styles.centro}>
-          <ActivityIndicator size="large" color="#2E86C1" />
+          <ActivityIndicator size="large" color="#0F76C4" />
         </View>
       ) : (
         <ScrollView
@@ -175,11 +183,11 @@ export default function Rondas({ token, onVolver, onAbrir }) {
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: "#F4F7FB" },
+  root: { flex: 1, backgroundColor: "#E5E7EB" },
   marca: { textAlign: "center", color: "#1E293B", fontWeight: "700" },
   cabeza: { marginBottom: 8 },
   volver: { flexDirection: "row", alignItems: "center", gap: 2 },
-  titulo: { color: "#222266", fontWeight: "700" },
+  titulo: { color: "#0F76C4", fontWeight: "700" },
   centro: { flex: 1, alignItems: "center", justifyContent: "center" },
   sub: { color: "#6B7280" },
   banner: {
@@ -197,7 +205,7 @@ const styles = StyleSheet.create({
     gap: 10,
     backgroundColor: "#fff",
   },
-  punto: { backgroundColor: "#2E86C1", alignItems: "center", justifyContent: "center" },
+  punto: { backgroundColor: "#138FEF", alignItems: "center", justifyContent: "center" },
   puntoCurso: { backgroundColor: "#EB7F27" },
   puntoHecho: { backgroundColor: "#16A085" },
   flex: { flex: 1, minWidth: 0 },

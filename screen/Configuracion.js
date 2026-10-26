@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import {
   ActivityIndicator,
   AppState,
+  ImageBackground,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -75,11 +76,18 @@ function Tecnica({ usuario, onSalir, saliendo, enFondo, diag, onVolver }) {
   }, []);
 
   return (
-    <View style={styles.fondo}>
+    <ImageBackground
+      source={require("../assets/ondas-fondo.png")}
+      style={styles.fondo}
+      imageStyle={styles.fondoImagen}
+      resizeMode="cover"
+    >
       <View style={styles.barra}>
-        <BotonVolver onPress={onVolver} />
-        <Pressable onPress={onSalir} disabled={saliendo} hitSlop={8}>
-          <Text style={styles.salir}>{saliendo ? "Saliendo..." : "Salir"}</Text>
+        <View style={styles.volverCaja}>
+          <BotonVolver onPress={onVolver} />
+        </View>
+        <Pressable onPress={onSalir} disabled={saliendo} style={styles.salirBtn} hitSlop={12}>
+          <Text allowFontScaling={false} style={styles.salir}>Salir</Text>
         </Pressable>
       </View>
 
@@ -120,11 +128,13 @@ function Tecnica({ usuario, onSalir, saliendo, enFondo, diag, onVolver }) {
         </Pressable>
       </View>
       </ScrollView>
-    </View>
+    </ImageBackground>
   );
 }
 
-export default function Configuracion({ usuario, onSalir, saliendo, enFondo, diag, onVolver }) {
+const CLAVE_INICIO = "253614";
+
+export default function Configuracion({ usuario, onSalir, saliendo, enFondo, diag, onVolver, onReiniciar }) {
   const [vista, setVista] = useState("clave");
   const [actual, setActual] = useState("");
   const [nueva, setNueva] = useState("");
@@ -132,6 +142,9 @@ export default function Configuracion({ usuario, onSalir, saliendo, enFondo, dia
   const [codigo, setCodigo] = useState("");
   const [error, setError] = useState("");
   const [guardando, setGuardando] = useState(false);
+  const [inicioAbierto, setInicioAbierto] = useState(false);
+  const [claveInicio, setClaveInicio] = useState("");
+  const [iniciando, setIniciando] = useState(false);
 
   const guardar = async () => {
     const claveActual = actual.trim();
@@ -159,6 +172,26 @@ export default function Configuracion({ usuario, onSalir, saliendo, enFondo, dia
     }
   };
 
+  const iniciarDeCero = async () => {
+    if (!inicioAbierto) {
+      setError("");
+      setInicioAbierto(true);
+      return;
+    }
+    if (claveInicio.trim() !== CLAVE_INICIO) {
+      setError("Clave incorrecta.");
+      return;
+    }
+    setError("");
+    setIniciando(true);
+    try {
+      await onReiniciar?.();
+    } catch (err) {
+      setError(err?.message || "No se pudo borrar el teléfono.");
+      setIniciando(false);
+    }
+  };
+
   const abrirOculta = () => {
     if (codigo.trim() !== CLAVE_OCULTA) {
       setError("Clave incorrecta.");
@@ -183,11 +216,18 @@ export default function Configuracion({ usuario, onSalir, saliendo, enFondo, dia
   }
 
   return (
-    <View style={styles.fondo}>
+    <ImageBackground
+      source={require("../assets/ondas-fondo.png")}
+      style={styles.fondo}
+      imageStyle={styles.fondoImagen}
+      resizeMode="cover"
+    >
       <View style={styles.barra}>
-        <BotonVolver onPress={onVolver} />
-        <Pressable onPress={onSalir} disabled={saliendo || guardando} hitSlop={8}>
-          <Text style={styles.salir}>{saliendo ? "Saliendo..." : "Salir"}</Text>
+        <View style={styles.volverCaja}>
+          <BotonVolver onPress={onVolver} />
+        </View>
+        <Pressable onPress={onSalir} disabled={saliendo || guardando || iniciando} style={styles.salirBtn} hitSlop={12}>
+          <Text allowFontScaling={false} style={styles.salir}>Salir</Text>
         </Pressable>
       </View>
       <ScrollView
@@ -196,85 +236,136 @@ export default function Configuracion({ usuario, onSalir, saliendo, enFondo, dia
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
-        <Pressable onLongPress={() => setVista(vista === "candado" ? "clave" : "candado")} delayLongPress={700}>
-          <Text style={styles.titulo}>Configuración</Text>
-        </Pressable>
-        <Text style={styles.detalle}>Cambiá la clave de ingreso. Después hay que entrar de nuevo.</Text>
+        <View style={styles.tarjeta}>
+          <Pressable onLongPress={() => setVista(vista === "candado" ? "clave" : "candado")} delayLongPress={700}>
+            <Text style={styles.titulo}>Configuración</Text>
+          </Pressable>
+          <Text style={styles.detalle}>Cambiá la clave de ingreso. Después hay que entrar de nuevo.</Text>
 
-        <Text style={styles.etiqueta}>Clave actual</Text>
-        <TextInput
-          style={styles.campo}
-          value={actual}
-          onChangeText={setActual}
-          secureTextEntry
-          editable={!guardando}
-          autoCapitalize="none"
-        />
-        <Text style={styles.etiqueta}>Clave nueva</Text>
-        <TextInput
-          style={styles.campo}
-          value={nueva}
-          onChangeText={setNueva}
-          secureTextEntry
-          editable={!guardando}
-          autoCapitalize="none"
-        />
-        <Text style={styles.etiqueta}>Repetir clave nueva</Text>
-        <TextInput
-          style={styles.campo}
-          value={repetir}
-          onChangeText={setRepetir}
-          secureTextEntry
-          editable={!guardando}
-          autoCapitalize="none"
-        />
+          <Text style={styles.etiqueta}>Clave actual</Text>
+          <TextInput
+            style={styles.campo}
+            value={actual}
+            onChangeText={setActual}
+            secureTextEntry
+            editable={!guardando}
+            autoCapitalize="none"
+          />
+          <Text style={styles.etiqueta}>Clave nueva</Text>
+          <TextInput
+            style={styles.campo}
+            value={nueva}
+            onChangeText={setNueva}
+            secureTextEntry
+            editable={!guardando}
+            autoCapitalize="none"
+          />
+          <Text style={styles.etiqueta}>Repetir clave nueva</Text>
+          <TextInput
+            style={styles.campo}
+            value={repetir}
+            onChangeText={setRepetir}
+            secureTextEntry
+            editable={!guardando}
+            autoCapitalize="none"
+          />
 
-        {vista === "candado" ? (
-          <>
-            <Text style={styles.etiqueta}>Código</Text>
-            <TextInput
-              style={styles.campo}
-              value={codigo}
-              onChangeText={setCodigo}
-              secureTextEntry
-              keyboardType="number-pad"
-              editable={!guardando}
-            />
-            <Pressable style={styles.extra} onPress={abrirOculta}>
-              <Text style={styles.extraTexto}>Abrir</Text>
-            </Pressable>
-          </>
-        ) : null}
+          {vista === "candado" ? (
+            <>
+              <Text style={styles.etiqueta}>Código</Text>
+              <TextInput
+                style={styles.campo}
+                value={codigo}
+                onChangeText={setCodigo}
+                secureTextEntry
+                keyboardType="number-pad"
+                editable={!guardando}
+              />
+              <Pressable style={styles.extra} onPress={abrirOculta}>
+                <Text style={styles.extraTexto}>Abrir</Text>
+              </Pressable>
+            </>
+          ) : null}
 
-        {error ? <Text style={styles.error}>{error}</Text> : null}
+          {error ? <Text style={styles.error}>{error}</Text> : null}
 
-        <Pressable
-          style={[styles.boton, guardando && styles.botonOff]}
-          onPress={guardar}
-          disabled={guardando}
-        >
-          {guardando ? (
-            <ActivityIndicator color="#ffffff" />
-          ) : (
-            <Text style={styles.botonTexto}>Guardar clave</Text>
-          )}
-        </Pressable>
+          {inicioAbierto ? (
+            <>
+              <Text style={styles.etiqueta}>Clave para iniciar de cero</Text>
+              <TextInput
+                style={styles.campo}
+                value={claveInicio}
+                onChangeText={setClaveInicio}
+                secureTextEntry
+                keyboardType="number-pad"
+                editable={!iniciando}
+                autoCapitalize="none"
+              />
+            </>
+          ) : null}
+
+          <Pressable
+            style={[styles.boton, (guardando || iniciando) && styles.botonOff]}
+            onPress={guardar}
+            disabled={guardando || iniciando}
+          >
+            {guardando ? (
+              <ActivityIndicator color="#ffffff" />
+            ) : (
+              <Text style={styles.botonTexto}>Guardar clave</Text>
+            )}
+          </Pressable>
+          <Pressable
+            style={[styles.extra, iniciando && styles.botonOff]}
+            onPress={iniciarDeCero}
+            disabled={iniciando || guardando}
+          >
+            {iniciando ? (
+              <ActivityIndicator color="#ffffff" />
+            ) : (
+              <Text style={styles.extraTexto}>{inicioAbierto ? "Borrar e iniciar" : "Iniciar"}</Text>
+            )}
+          </Pressable>
+        </View>
       </ScrollView>
-    </View>
+    </ImageBackground>
   );
 }
 
 const styles = StyleSheet.create({
   fondo: {
     flex: 1,
-    backgroundColor: "#F4FBFE",
+    backgroundColor: "#445864",
     paddingHorizontal: 22,
+  },
+  fondoImagen: {
+    opacity: 0.55,
   },
   barra: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     paddingBottom: 12,
+  },
+  volverCaja: {
+    flex: 1,
+    minWidth: 0,
+    marginRight: 10,
+    overflow: "hidden",
+  },
+  salirBtn: {
+    width: 120,
+    height: 48,
+    flexGrow: 0,
+    flexShrink: 0,
+    zIndex: 30,
+    elevation: 30,
+    borderRadius: 16,
+    backgroundColor: "#0F76C4",
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: "#6BB0E8",
   },
   lista: {
     flex: 1,
@@ -283,53 +374,54 @@ const styles = StyleSheet.create({
     paddingBottom: 24,
   },
   volver: {
-    color: "#0F76C4",
+    color: "#FFFFFF",
     fontSize: 15,
     fontWeight: "700",
   },
   salir: {
-    color: "#0F76C4",
-    fontSize: 15,
-    fontWeight: "700",
+    color: "#FFFFFF",
+    fontSize: 16,
+    fontWeight: "800",
+    lineHeight: 20,
   },
   hola: {
-    color: "#5C7A90",
+    color: "rgba(255,255,255,0.75)",
     fontSize: 14,
   },
   nombre: {
     marginTop: 2,
-    color: "#0B3A5B",
+    color: "#FFFFFF",
     fontSize: 28,
-    fontWeight: "700",
+    fontWeight: "800",
   },
   rol: {
     marginTop: 4,
-    color: "#138FEF",
+    color: "#8FB8EF",
     fontSize: 13,
     fontWeight: "700",
   },
   tarjeta: {
-    marginTop: 28,
-    backgroundColor: "#ffffff",
-    borderRadius: 18,
+    marginTop: 20,
+    backgroundColor: "rgba(186, 198, 208, 0.35)",
+    borderRadius: 16,
     padding: 18,
     borderWidth: 1,
-    borderColor: "#D7F1FC",
+    borderColor: "#D8E2E8",
   },
   titulo: {
-    color: "#0B3A5B",
+    color: "#1A2B3C",
     fontSize: 18,
-    fontWeight: "700",
+    fontWeight: "800",
   },
   detalle: {
     marginTop: 8,
-    color: "#5C7A90",
+    color: "#3A4A58",
     fontSize: 14,
     lineHeight: 20,
   },
   linea: {
     marginTop: 8,
-    color: "#0B3A5B",
+    color: "#1A2B3C",
     fontSize: 14,
     lineHeight: 20,
   },
@@ -341,41 +433,44 @@ const styles = StyleSheet.create({
   },
   extra: {
     marginTop: 12,
-    borderRadius: 12,
+    borderRadius: 16,
     borderWidth: 1,
-    borderColor: "#9FDFFC",
+    borderColor: "#8FB8EF",
+    backgroundColor: "rgba(58, 113, 183, 0.45)",
     paddingVertical: 10,
     paddingHorizontal: 12,
   },
   extraTexto: {
-    color: "#0F76C4",
+    color: "#FFFFFF",
     fontSize: 14,
     fontWeight: "700",
   },
   etiqueta: {
     marginTop: 16,
     marginBottom: 6,
-    color: "#5C7A90",
+    color: "#1A2B3C",
     fontSize: 13,
     fontWeight: "700",
   },
   campo: {
-    backgroundColor: "#ffffff",
-    borderRadius: 12,
+    backgroundColor: "rgba(255,255,255,0.72)",
+    borderRadius: 16,
     borderWidth: 1,
-    borderColor: "#D7F1FC",
+    borderColor: "#D8E2E8",
     paddingHorizontal: 12,
     paddingVertical: 12,
-    color: "#0B3A5B",
+    color: "#1A2B3C",
     fontSize: 16,
   },
   boton: {
     marginTop: 22,
     backgroundColor: "#0F76C4",
-    borderRadius: 14,
+    borderRadius: 16,
     minHeight: 48,
     alignItems: "center",
     justifyContent: "center",
+    borderWidth: 1,
+    borderColor: "#6BB0E8",
   },
   botonOff: {
     opacity: 0.6,

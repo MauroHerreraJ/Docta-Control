@@ -2,7 +2,7 @@ import * as Location from "expo-location";
 import * as Notifications from "expo-notifications";
 import * as TaskManager from "expo-task-manager";
 import { DeviceEventEmitter, Linking, Platform } from "react-native";
-import { despertarConsulta } from "./fondo";
+import { despertarConsulta, ordenCerrarApp } from "./fondo";
 import { callarAlarma, sonarAlarma } from "./overlay";
 import { informarHombreVivo, reconocerPush, registrarTokenPush, restaurarSesion } from "./sesion";
 
@@ -209,6 +209,10 @@ function tipoDe(data) {
 }
 
 TaskManager.defineTask(TAREA_PUSH, async ({ data }) => {
+  if (tipoDe(data) === "cerrar-app") {
+    ordenCerrarApp();
+    return;
+  }
   if (tipoDe(data) !== "keepalive") return;
   await despertarConsulta();
 });
@@ -315,10 +319,18 @@ export async function activarPush(tokenSesion) {
 }
 
 Notifications.addNotificationReceivedListener((avisoRecibido) => {
+  if (datosDe(avisoRecibido).tipo === "cerrar-app") {
+    ordenCerrarApp();
+    return;
+  }
   abrirAviso(avisoRecibido);
 });
 
 Notifications.addNotificationResponseReceivedListener((respuesta) => {
+  if (datosDe(respuesta?.notification).tipo === "cerrar-app") {
+    ordenCerrarApp();
+    return;
+  }
   abrirAviso(respuesta?.notification);
 });
 

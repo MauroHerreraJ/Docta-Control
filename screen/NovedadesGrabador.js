@@ -97,7 +97,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
-    backgroundColor: "#8E44AD",
+    backgroundColor: "#7B61FF",
   },
   chipTexto: { color: "#fff", fontWeight: "700" },
   micOn: { backgroundColor: "#DC2626" },

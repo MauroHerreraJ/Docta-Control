@@ -53,6 +53,6 @@ const styles = StyleSheet.create({
     padding: 16,
   },
   texto: { color: "#fff", textAlign: "center", fontWeight: "700" },
-  btn: { marginTop: 10, backgroundColor: "#2E86C1", borderRadius: 10, paddingHorizontal: 14, paddingVertical: 8 },
+  btn: { marginTop: 10, backgroundColor: "#138FEF", borderRadius: 10, paddingHorizontal: 14, paddingVertical: 8 },
   btnTexto: { color: "#fff", fontWeight: "700" },
 });

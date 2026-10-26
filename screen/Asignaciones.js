@@ -122,7 +122,7 @@ export default function Asignaciones({ token, onVolver }) {
 
       {cargando && !elegida ? (
         <View style={styles.centro}>
-          <ActivityIndicator size="large" color="#222266" />
+          <ActivityIndicator size="large" color="#0F76C4" />
         </View>
       ) : elegida ? (
         <View style={{ flex: 1 }}>
@@ -161,7 +161,7 @@ export default function Asignaciones({ token, onVolver }) {
                 <Boton texto="Aceptar" color="#0F76C4" ocupado={ocupado} m={m} onPress={() => avanzar("aceptar")} />
               ) : null}
               {["aceptada", "en_sitio", "partida"].includes(estado) ? (
-                <Boton texto="Reconocer" color="#16A085" ocupado={ocupado} m={m} onPress={() => avanzar("finalizar")} />
+                <Boton texto="Reconocer" color="#12A39A" ocupado={ocupado} m={m} onPress={() => avanzar("finalizar")} />
               ) : null}
               {["finalizada", "cancelada"].includes(estado) ? (
                 <Text style={[styles.sub, { textAlign: "center", fontSize: m(14) }]}>
@@ -226,11 +226,11 @@ function Boton({ texto, color, ocupado, m, onPress }) {
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: "#F4F7FB" },
+  root: { flex: 1, backgroundColor: "#E5E7EB" },
   marca: { textAlign: "center", color: "#1E293B", fontWeight: "700" },
   cabeza: { marginBottom: 8 },
   volver: { flexDirection: "row", alignItems: "center", gap: 2 },
-  titulo: { color: "#222266", fontWeight: "700", flexShrink: 1 },
+  titulo: { color: "#0F76C4", fontWeight: "700", flexShrink: 1 },
   centro: { flex: 1, alignItems: "center", justifyContent: "center" },
   seccion: { color: "#1A2332", fontWeight: "800" },
   sub: { color: "#6B7280", marginTop: 2 },

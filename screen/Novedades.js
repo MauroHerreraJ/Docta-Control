@@ -233,7 +233,7 @@ export default function Novedades({ token, onVolver }) {
 
       {cargando && !data ? (
         <View style={styles.centro}>
-          <ActivityIndicator size="large" color="#8E44AD" />
+          <ActivityIndicator size="large" color="#0F76C4" />
         </View>
       ) : (
         <View style={{ flex: 1 }}>
@@ -378,19 +378,19 @@ export default function Novedades({ token, onVolver }) {
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: "#F4F7FB" },
+  root: { flex: 1, backgroundColor: "#E5E7EB" },
   marca: { textAlign: "center", color: "#1E293B", fontWeight: "700" },
   cabeza: { marginBottom: 8 },
   volver: { flexDirection: "row", alignItems: "center", gap: 2 },
-  titulo: { color: "#222266", fontWeight: "700", flexShrink: 1 },
+  titulo: { color: "#0F76C4", fontWeight: "700", flexShrink: 1 },
   centro: { flex: 1, alignItems: "center", justifyContent: "center" },
   sub: { color: "#6B7280" },
   nota: { backgroundColor: "#fff", borderWidth: 1, borderColor: "#E8ECF1" },
-  hora: { fontWeight: "800", color: "#8E44AD" },
+  hora: { fontWeight: "800", color: "#7B61FF" },
   cuerpo: { color: "#1A2332" },
   fotos: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
   foto: { width: 64, height: 64, borderRadius: 8, backgroundColor: "#E8ECF1" },
-  audioNota: { fontWeight: "700", color: "#8E44AD" },
+  audioNota: { fontWeight: "700", color: "#7B61FF" },
   empty: { alignItems: "center" },
   emptyTitulo: { fontWeight: "700", color: "#1A2332" },
   emptySub: { color: "#6B7280", textAlign: "center" },
@@ -399,7 +399,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
-    backgroundColor: "#8E44AD",
+    backgroundColor: "#7B61FF",
   },
   chipTexto: { color: "#fff", fontWeight: "700" },
   previas: { flexDirection: "row", alignItems: "center", gap: 8 },
@@ -411,9 +411,9 @@ const styles = StyleSheet.create({
     borderColor: "#E8ECF1",
     color: "#1A2332",
   },
-  mic: { backgroundColor: "#8E44AD", alignItems: "center", justifyContent: "center" },
+  mic: { backgroundColor: "#7B61FF", alignItems: "center", justifyContent: "center" },
   micOn: { backgroundColor: "#DC2626" },
-  btn: { backgroundColor: "#8E44AD" },
+  btn: { backgroundColor: "#7B61FF" },
   btnOff: { backgroundColor: "#94A3B8" },
   btnTexto: { color: "#fff", fontWeight: "800" },
 });

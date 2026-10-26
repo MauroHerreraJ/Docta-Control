@@ -134,7 +134,7 @@ export default function Accesos({ token, onVolver }) {
 
       {cargando && !data ? (
         <View style={styles.centro}>
-          <ActivityIndicator size="large" color="#16A085" />
+          <ActivityIndicator size="large" color="#12A39A" />
         </View>
       ) : (
         <ScrollView
@@ -214,14 +214,14 @@ function Campo({ m, letra, label, value, onChange, editable, placeholder, keyboa
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: "#F4F7FB" },
+  root: { flex: 1, backgroundColor: "#E5E7EB" },
   marca: { textAlign: "center", color: "#1E293B", fontWeight: "700" },
   cabeza: { marginBottom: 8 },
   volver: { flexDirection: "row", alignItems: "center", gap: 2 },
-  titulo: { color: "#222266", fontWeight: "700", flexShrink: 1 },
+  titulo: { color: "#0F76C4", fontWeight: "700", flexShrink: 1 },
   centro: { flex: 1, alignItems: "center", justifyContent: "center" },
   sub: { color: "#6B7280" },
-  cuando: { fontWeight: "700", color: "#16A085" },
+  cuando: { fontWeight: "700", color: "#12A39A" },
   label: { fontWeight: "700", color: "#475569" },
   input: {
     backgroundColor: "#fff",
@@ -229,7 +229,7 @@ const styles = StyleSheet.create({
     borderColor: "#E8ECF1",
     color: "#1A2332",
   },
-  btn: { backgroundColor: "#16A085", alignItems: "center" },
+  btn: { backgroundColor: "#12A39A", alignItems: "center" },
   btnOff: { backgroundColor: "#94A3B8" },
   btnTexto: { color: "#fff", fontWeight: "800" },
   listaTitulo: { fontWeight: "800", color: "#1A2332" },

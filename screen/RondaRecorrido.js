@@ -543,7 +543,7 @@ export default function RondaRecorrido({ token, rondaId, onVolver }) {
 
       {cargando && !vista ? (
         <View style={styles.centro}>
-          <ActivityIndicator size="large" color="#2E86C1" />
+          <ActivityIndicator size="large" color="#0F76C4" />
         </View>
       ) : !vista ? (
         <View style={styles.centro}>
@@ -681,11 +681,11 @@ export default function RondaRecorrido({ token, rondaId, onVolver }) {
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: "#F4F7FB" },
+  root: { flex: 1, backgroundColor: "#FFFFFF" },
   marca: { textAlign: "center", color: "#1E293B", fontWeight: "700" },
   cabeza: { marginBottom: 4 },
   volver: { flexDirection: "row", alignItems: "center", gap: 2 },
-  titulo: { color: "#222266", fontWeight: "700", flexShrink: 1 },
+  titulo: { color: "#0F76C4", fontWeight: "700", flexShrink: 1 },
   centro: { flex: 1, alignItems: "center", justifyContent: "center", paddingHorizontal: 24 },
   sub: { color: "#6B7280" },
   map: {
@@ -711,8 +711,8 @@ const styles = StyleSheet.create({
   numTexto: { color: "#fff", fontWeight: "800" },
   flex: { flex: 1, minWidth: 0 },
   filaTitulo: { fontWeight: "700", color: "#1A2332" },
-  btn: { backgroundColor: "#2E86C1", paddingVertical: 14, alignItems: "center" },
-  btnCerrar: { backgroundColor: "#16A085" },
+  btn: { backgroundColor: "#138FEF", paddingVertical: 14, alignItems: "center" },
+  btnCerrar: { backgroundColor: "#12A39A" },
   btnOff: { backgroundColor: "#94A3B8" },
   btnTexto: { color: "#fff", fontWeight: "800" },
   aviso: { marginTop: 8, textAlign: "center", fontWeight: "700", color: "#16A085" },

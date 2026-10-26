@@ -37,7 +37,9 @@ export default function BotonVolver({ onPress, titulo, m = (n) => n }) {
         ]}
       >
         <Flecha m={m} />
-        <Text style={[styles.texto, { fontSize: m(16) }]}>Volver atrás</Text>
+        <Text style={[styles.texto, { fontSize: m(16) }]} numberOfLines={1}>
+          Volver atrás
+        </Text>
       </Pressable>
       {titulo ? (
         <Text style={[styles.titulo, { fontSize: m(18) }]} numberOfLines={1}>
@@ -53,25 +55,31 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     alignSelf: "stretch",
+    minWidth: 0,
+    flexShrink: 1,
     gap: 10,
   },
   boton: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    flexShrink: 0,
+    flexShrink: 1,
+    maxWidth: "100%",
     backgroundColor: "#0F76C4",
+    borderWidth: 1,
+    borderColor: "#6BB0E8",
   },
   botonOn: {
     backgroundColor: "#0B5F9C",
   },
   texto: {
+    flexShrink: 1,
     color: "#fff",
     fontWeight: "800",
   },
   titulo: {
     flex: 1,
-    color: "#222266",
+    color: "#1A2332",
     fontWeight: "700",
   },
 });

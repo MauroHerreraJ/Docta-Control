@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
-import { Image, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
+import { AppState, Image, ImageBackground, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { useMarco } from "../util/medida";
 import { flushRondaQueue } from "../util/rondaQueue";
 import {
   accesosDelTurno,
@@ -8,43 +10,41 @@ import {
   perfilDelVigilador,
   rondasDelTurno,
   tareasDeHoy,
+  turnoActual,
 } from "../util/sesion";
 
 const TARJETAS = [
   {
     titulo: "Asignaciones",
-    detalle: "Pendientes del turno",
-    estado: "3 pendientes",
-    color: "#7C5CE6",
+    fondo: "rgba(58, 113, 183, 0.45)",
+    borde: "#8FB8EF",
+    iconoFondo: "#2E76E4",
+    badge: "#1B4FBF",
     icono: "lista",
   },
   {
     titulo: "Rondas",
-    detalle: "Hacer plan del turno",
-    estado: "1 activa",
-    color: "#3B82F6",
-    icono: "persona",
+    fondo: "rgba(46, 190, 106, 0.45)",
+    borde: "#7ED9A8",
+    iconoFondo: "#1FA85A",
+    badge: "#127A40",
+    icono: "pin",
   },
   {
     titulo: "Accesos",
-    detalle: "Ingresos y egresos",
-    estado: "1 hoy",
-    color: "#F59E0B",
-    icono: "llave",
+    fondo: "rgba(245, 165, 36, 0.45)",
+    borde: "#F5C56A",
+    iconoFondo: "#E08E12",
+    badge: "#B86E0A",
+    icono: "puerta",
   },
   {
     titulo: "Novedades",
-    detalle: "Libro de guardia",
-    estado: "Sin novedades",
-    color: "#7C5CE6",
+    fondo: "rgba(139, 108, 247, 0.45)",
+    borde: "#B8A0FA",
+    iconoFondo: "#7048E8",
+    badge: "#5428C4",
     icono: "doc",
-  },
-  {
-    titulo: "Hombre vivo",
-    detalle: "Confirmá el puesto",
-    estado: "Sin marcas",
-    color: "#EF4444",
-    icono: "pulso",
   },
 ];
 
@@ -57,7 +57,15 @@ function Icono({ nombre, color }) {
   if (nombre === "pulso") return <IconoPulso color={color} />;
   if (nombre === "casa") return <IconoCasa color={color} />;
   if (nombre === "ajuste") return <IconoAjuste color={color} />;
+  if (nombre === "pin") return <IconoPin color={color} />;
+  if (nombre === "reloj") return <IconoReloj color={color} />;
+  if (nombre === "puerta") return <IconoPuerta color={color} />;
+  if (nombre === "alerta") return <IconoAlerta color={color} />;
   return null;
+}
+
+function Chevron({ color }) {
+  return <Text style={[styles.chevron, { color }]}>›</Text>;
 }
 
 function IconoEscudo({ color }) {
@@ -135,6 +143,37 @@ function IconoCasa({ color }) {
   );
 }
 
+function IconoPin({ color }) {
+  return (
+    <View style={styles.iconoCaja}>
+      <View style={[styles.pinCabeza, { borderColor: color }]} />
+      <View style={[styles.pinPunta, { borderTopColor: color }]} />
+    </View>
+  );
+}
+
+function IconoReloj({ color }) {
+  return (
+    <View style={styles.iconoCaja}>
+      <View style={[styles.relojAro, { borderColor: color }]} />
+      <View style={[styles.relojMano, { backgroundColor: color }]} />
+    </View>
+  );
+}
+
+function IconoPuerta({ color }) {
+  return (
+    <View style={styles.iconoCaja}>
+      <View style={[styles.puertaHoja, { borderColor: color }]} />
+      <View style={[styles.puertaPomo, { backgroundColor: color }]} />
+    </View>
+  );
+}
+
+function IconoAlerta({ color }) {
+  return <Ionicons name="warning-outline" size={22} color={color} />;
+}
+
 function IconoAjuste({ color }) {
   return (
     <View style={styles.iconoCaja}>
@@ -148,21 +187,100 @@ function IconoAjuste({ color }) {
   );
 }
 
+function IconoMenuAjuste({ color, perilla = "#8EC8F0" }) {
+  return (
+    <View style={styles.menuAjuste}>
+      <View style={[styles.menuAjusteLinea, { backgroundColor: color, top: 3 }]} />
+      <View style={[styles.menuAjusteLinea, { backgroundColor: color, top: 11 }]} />
+      <View style={[styles.menuAjusteLinea, { backgroundColor: color, top: 19 }]} />
+      <View style={[styles.menuAjustePerilla, { borderColor: color, backgroundColor: perilla, top: 0, left: 2 }]} />
+      <View style={[styles.menuAjustePerilla, { borderColor: color, backgroundColor: perilla, top: 8, left: 14 }]} />
+      <View style={[styles.menuAjustePerilla, { borderColor: color, backgroundColor: perilla, top: 16, left: 7 }]} />
+    </View>
+  );
+}
+
+function IconoTrabajo({ nombre, color }) {
+  if (nombre === "lista") return <Ionicons name="clipboard-outline" size={26} color={color} />;
+  if (nombre === "pin") return <Ionicons name="location-outline" size={26} color={color} />;
+  if (nombre === "puerta") return <Ionicons name="enter-outline" size={26} color={color} />;
+  if (nombre === "doc") return <Ionicons name="document-text-outline" size={26} color={color} />;
+  return <Icono nombre={nombre} color={color} />;
+}
+
+function GloboNumero({ fondo, badge, icono, numero }) {
+  const visible = Number(numero) > 0;
+  return (
+    <View style={styles.globo}>
+      <View style={[styles.iconoCuadro, { backgroundColor: fondo }]}>
+        <View style={styles.iconoBrillo} />
+        <View style={styles.iconoSombra} />
+        <View style={styles.iconoDibujo}>
+          <IconoTrabajo nombre={icono} color="#FFFFFF" />
+        </View>
+      </View>
+      {visible ? (
+        <View style={styles.globoBadge}>
+          <Text allowFontScaling={false} style={styles.globoNumero}>
+            {numero}
+          </Text>
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
+const FONDO_COLOR = "#445864";
+
+function horaTurno(iso) {
+  const fecha = new Date(iso);
+  if (Number.isNaN(fecha.getTime())) return "";
+  return fecha.toLocaleTimeString("es-AR", {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+    timeZone: "America/Argentina/Buenos_Aires",
+  });
+}
+
+function textoTurno(turno) {
+  const cuenta = turno?.cuentaId;
+  const nombre = String(cuenta?.nombrefantasia || cuenta?.nombre || "").trim();
+  const desde = horaTurno(turno?.inicio);
+  const hasta = horaTurno(turno?.fin);
+  const horario = desde && hasta ? `${desde} - ${hasta}` : "";
+  const ahora = Date.now();
+  const inicio = new Date(turno?.inicio).getTime();
+  const fin = new Date(turno?.fin).getTime();
+  const enCurso = Number.isFinite(inicio) && Number.isFinite(fin) && inicio <= ahora && ahora <= fin;
+  const estado = enCurso ? "EN TURNO" : String(turno?.estado || "").toLowerCase() === "activa" ? "ACTIVA" : "PROGRAMADO";
+  return {
+    nombre: nombre || "Sin objetivo",
+    horario: horario || "Sin turno",
+    estado,
+  };
+}
+
 export function MenuInferior({ activo, onHome, onConfiguracion }) {
   const home = activo === "home";
+  const { abajo } = useMarco();
+  const activoColor = "#0B1220";
+  const inactivoColor = "#2A3444";
   return (
-    <View style={styles.barra}>
+    <View style={[styles.barra, { marginBottom: -abajo, paddingBottom: 12 + abajo }]}>
       <Pressable style={styles.tab} onPress={onHome} hitSlop={6}>
-        <Icono nombre="casa" color={home ? "#2F6BFF" : "#9AA3B2"} />
+        <Ionicons name="home" size={24} color={home ? activoColor : inactivoColor} />
         <Text style={[styles.tabTexto, home && styles.tabActivo]} numberOfLines={1}>
           Home
         </Text>
+        {home ? <View style={styles.tabLinea} /> : <View style={styles.tabLineaVacia} />}
       </Pressable>
       <Pressable style={styles.tab} onPress={onConfiguracion} hitSlop={6}>
-        <Icono nombre="ajuste" color={home ? "#9AA3B2" : "#2F6BFF"} />
+        <IconoMenuAjuste color={!home ? activoColor : inactivoColor} />
         <Text style={[styles.tabTexto, !home && styles.tabActivo]} numberOfLines={1}>
           Configuración
         </Text>
+        {!home ? <View style={styles.tabLinea} /> : <View style={styles.tabLineaVacia} />}
       </Pressable>
     </View>
   );
@@ -183,78 +301,85 @@ export default function Principal({
   const [tareasCount, setTareasCount] = useState(null);
   const [accesosHoy, setAccesosHoy] = useState(null);
   const [novedadesCount, setNovedadesCount] = useState(null);
+  const [turno, setTurno] = useState(null);
 
   useEffect(() => {
     const token = usuario?.token;
     if (!token) return undefined;
     let vivo = true;
-    flushRondaQueue()
-      .catch(() => {})
-      .then(() => rondasDelTurno(token))
-      .then((data) => {
-        if (!vivo || !data) return;
-        const abiertas = (data.rondas || []).filter((item) => item?.estado !== "cerrada").length;
-        setRondasActivas(abiertas);
-      })
-      .catch(() => {});
-    tareasDeHoy(token)
-      .then((data) => {
-        if (!vivo || !data) return;
-        const pendientes = Array.isArray(data.pendientes) ? data.pendientes.length : 0;
-        const enCurso = Array.isArray(data.activos) ? data.activos.length : 0;
-        setTareasCount(pendientes + enCurso);
-      })
-      .catch(() => {});
-    accesosDelTurno(token)
-      .then((data) => {
-        if (!vivo || !data) return;
-        setAccesosHoy(Number(data.hoy) || 0);
-      })
-      .catch(() => {});
-    novedadesDelTurno(token)
-      .then((data) => {
-        if (!vivo || !data) return;
-        setNovedadesCount((data.novedades || []).length);
-      })
-      .catch(() => {});
-    perfilDelVigilador(token)
-      .then((data) => {
-        if (!vivo || !data) return;
-        const url = String(data?.perfil?.foto || data?.vigilador?.foto || "").trim();
-        setFoto(url);
-      })
-      .catch(() => {});
+    const cargar = () => {
+      flushRondaQueue()
+        .catch(() => {})
+        .then(() => rondasDelTurno(token))
+        .then((data) => {
+          if (!vivo || !data) return;
+          setRondasActivas((data.rondas || []).length);
+        })
+        .catch(() => {});
+      tareasDeHoy(token)
+        .then((data) => {
+          if (!vivo || !data) return;
+          const pendientes = Array.isArray(data.pendientes) ? data.pendientes.length : 0;
+          const enCurso = Array.isArray(data.activos) ? data.activos.length : 0;
+          setTareasCount(pendientes + enCurso);
+        })
+        .catch(() => {});
+      accesosDelTurno(token)
+        .then((data) => {
+          if (!vivo || !data) return;
+          setAccesosHoy(Number(data.hoy) || 0);
+        })
+        .catch(() => {});
+      novedadesDelTurno(token)
+        .then((data) => {
+          if (!vivo || !data) return;
+          setNovedadesCount((data.novedades || []).length);
+        })
+        .catch(() => {});
+      turnoActual(token)
+        .then((data) => {
+          if (!vivo) return;
+          setTurno(data?.activa || null);
+        })
+        .catch(() => {});
+      perfilDelVigilador(token)
+        .then((data) => {
+          if (!vivo || !data) return;
+          const url = String(data?.perfil?.foto || data?.vigilador?.foto || "").trim();
+          setFoto(url);
+        })
+        .catch(() => {});
+    };
+    cargar();
+    const timer = setInterval(cargar, 15000);
+    const estado = AppState.addEventListener("change", (siguiente) => {
+      if (siguiente === "active") cargar();
+    });
     return () => {
       vivo = false;
+      clearInterval(timer);
+      estado.remove();
     };
   }, [usuario?.token]);
 
-  const estadoDe = (item) => {
+  const cuentaDe = (item) => {
     if (item.titulo === "Rondas") {
-      if (rondasActivas == null) return "…";
-      if (rondasActivas === 1) return "1 activa";
-      if (rondasActivas > 1) return `${rondasActivas} activas`;
-      return "Sin activas";
+      const n = rondasActivas;
+      return { numero: n == null ? "…" : String(n), etiqueta: n === 1 ? "activa" : "activas" };
     }
     if (item.titulo === "Asignaciones") {
-      if (tareasCount == null) return "…";
-      if (tareasCount === 1) return "1 pendiente";
-      if (tareasCount > 1) return `${tareasCount} pendientes`;
-      return "Sin pendientes";
+      const n = tareasCount;
+      return { numero: n == null ? "…" : String(n), etiqueta: n === 1 ? "pendiente" : "pendientes" };
     }
     if (item.titulo === "Accesos") {
-      if (accesosHoy == null) return "…";
-      if (accesosHoy === 1) return "1 hoy";
-      if (accesosHoy > 1) return `${accesosHoy} hoy`;
-      return "0 hoy";
+      const n = accesosHoy;
+      return { numero: n == null ? "…" : String(n), etiqueta: "hoy" };
     }
     if (item.titulo === "Novedades") {
-      if (novedadesCount == null) return "…";
-      if (novedadesCount === 1) return "1 en el turno";
-      if (novedadesCount > 1) return `${novedadesCount} en el turno`;
-      return "Sin novedades";
+      const n = novedadesCount;
+      return { numero: n == null ? "…" : String(n), etiqueta: "sin leer" };
     }
-    return item.estado;
+    return { numero: "0", etiqueta: "" };
   };
 
   const abrirDe = (titulo) => {
@@ -264,9 +389,17 @@ export default function Principal({
     if (titulo === "Novedades") return onAbrirNovedades;
     return null;
   };
+  const ficha = turno ? textoTurno(turno) : null;
   return (
-    <View style={styles.fondo}>
-      <Text style={styles.titulo}>Vigilantes</Text>
+    <ImageBackground
+      source={require("../assets/ondas-fondo.png")}
+      style={styles.fondo}
+      imageStyle={styles.fondoImagen}
+      resizeMode="cover"
+    >
+      <View style={styles.cabecera}>
+        <Text style={styles.titulo} numberOfLines={1}>DoctaControl</Text>
+      </View>
 
       <ScrollView
         style={styles.lista}
@@ -296,49 +429,95 @@ export default function Principal({
               {documento ? `Documento ${documento}` : "Sin documento"}
             </Text>
           </View>
-          <View style={styles.perfilAcciones}>
-            <View style={styles.on}>
-              <View style={styles.onPunto} />
-              <Text style={styles.onTexto}>ON</Text>
-            </View>
-            <Pressable onPress={onSalir} disabled={saliendo} style={styles.salir} hitSlop={6}>
-              <Text style={styles.salirTexto}>{saliendo ? "..." : "Salir"}</Text>
-            </Pressable>
-          </View>
+          <Pressable
+            onPress={onSalir}
+            disabled={saliendo}
+            style={[styles.salir, saliendo && styles.salirOff]}
+            hitSlop={8}
+          >
+            <Text allowFontScaling={false} style={styles.salirTexto}>
+              Salir
+            </Text>
+          </Pressable>
         </View>
 
         <View style={styles.objetivo}>
-          <Icono nombre="escudo" color="#1FA971" />
+          <View style={styles.iconoTurno}>
+            <Ionicons name="location" size={22} color="#FFFFFF" />
+          </View>
           <View style={styles.objetivoTexto}>
-            <Text style={styles.objetivoNombre}>Farmacia Central</Text>
-            <Text style={styles.objetivoHora}>06:00-14:00</Text>
+            <Text style={styles.objetivoNombre} numberOfLines={1}>
+              {ficha ? ficha.nombre : "…"}
+            </Text>
+            <View style={styles.horaFila}>
+              <View style={styles.relojMini}>
+                <Icono nombre="reloj" color="#8B93A7" />
+              </View>
+              <Text style={styles.objetivoHora}>{ficha ? ficha.horario : "…"}</Text>
+            </View>
           </View>
           <View style={styles.programado}>
-            <Text style={styles.programadoTexto}>PROGRAMADO</Text>
+            <Text style={styles.programadoTexto}>{ficha ? ficha.estado : ""}</Text>
           </View>
         </View>
 
-        <Text style={styles.seccion}>Mi escritorio</Text>
+        <View style={styles.seccionFila}>
+          <View style={styles.seccionMarca} />
+          <Text style={styles.seccion}>Mi escritorio</Text>
+        </View>
         <View style={styles.grilla}>
           {TARJETAS.map((item) => {
-            const cuerpo = (
+            const cuenta = cuentaDe(item);
+            const cuerpo = item.ancha ? (
+              <View style={styles.tarjetaTope}>
+                <View style={[styles.iconoCirculo, { backgroundColor: item.tinta }]}>
+                  <Icono nombre={item.icono} color="#FFFFFF" />
+                </View>
+                <View style={styles.tarjetaTexto}>
+                  <Text style={styles.tarjetaTituloFila}>{item.titulo}</Text>
+                </View>
+                <Chevron color="#1A2B3C" />
+              </View>
+            ) : (
               <>
-                <Icono nombre={item.icono} color={item.color} />
-                <Text style={styles.tarjetaTitulo}>{item.titulo}</Text>
-                <Text style={styles.tarjetaDetalle}>{item.detalle}</Text>
-                <Text style={[styles.tarjetaEstado, { color: item.color }]}>{estadoDe(item)}</Text>
+                <View style={styles.iconoCentro}>
+                  <GloboNumero
+                    fondo={item.iconoFondo}
+                    badge={item.badge}
+                    icono={item.icono}
+                    numero={cuenta.numero}
+                  />
+                </View>
+                <View style={styles.tarjetaPie}>
+                  <Text
+                    style={[styles.tarjetaTitulo, styles.tarjetaTituloPie]}
+                    numberOfLines={1}
+                    adjustsFontSizeToFit
+                    minimumFontScale={0.9}
+                  >
+                    {item.titulo}
+                  </Text>
+                  <View style={styles.pieFlecha}>
+                    <Chevron color="#FFFFFF" />
+                  </View>
+                </View>
               </>
             );
             const abrir = abrirDe(item.titulo);
+            const caja = [
+              styles.tarjeta,
+              item.ancha && styles.tarjetaAncha,
+              { backgroundColor: item.fondo, borderColor: item.borde },
+            ];
             if (!abrir) {
               return (
-                <View key={item.titulo} style={styles.tarjeta}>
+                <View key={item.titulo} style={caja}>
                   {cuerpo}
                 </View>
               );
             }
             return (
-              <Pressable key={item.titulo} style={styles.tarjeta} onPress={abrir}>
+              <Pressable key={item.titulo} style={caja} onPress={abrir}>
                 {cuerpo}
               </Pressable>
             );
@@ -346,24 +525,56 @@ export default function Principal({
         </View>
 
         <View style={styles.emergencia}>
+          <View style={styles.emergenciaIcono}>
+            <Icono nombre="alerta" color="#FFFFFF" />
+          </View>
           <Text style={styles.emergenciaTexto}>ENVIAR EMERGENCIA</Text>
+          <Chevron color="#FFFFFF" />
         </View>
       </ScrollView>
-    </View>
+    </ImageBackground>
   );
 }
 
 const styles = StyleSheet.create({
   fondo: {
     flex: 1,
-    backgroundColor: "#F5F6F8",
+    backgroundColor: FONDO_COLOR,
+    overflow: "hidden",
+  },
+  fondoImagen: {
+    opacity: 0.55,
+  },
+  cabecera: {
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 16,
+    minHeight: 56,
+  },
+  salir: {
+    width: 88,
+    height: 40,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#0F76C4",
+    borderWidth: 1,
+    borderColor: "#6BB0E8",
+  },
+  salirOff: {
+    opacity: 0.6,
+  },
+  salirTexto: {
+    color: "#FFFFFF",
+    fontSize: 16,
+    fontWeight: "800",
+    lineHeight: 20,
   },
   titulo: {
     textAlign: "center",
-    color: "#1A1D2E",
+    color: "#FFFFFF",
     fontSize: 20,
     fontWeight: "800",
-    paddingBottom: 6,
   },
   lista: {
     flex: 1,
@@ -376,24 +587,29 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 10,
-    backgroundColor: "#2E3A66",
-    borderRadius: 18,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
+    backgroundColor: "rgba(186, 198, 208, 0.35)",
+    borderRadius: 16,
+    paddingHorizontal: 14,
+    paddingVertical: 16,
+    minHeight: 72,
+    borderWidth: 1,
+    borderColor: "#D8E2E8",
   },
   avatar: {
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: "#C4A484",
+    backgroundColor: "rgba(90,106,122,0.9)",
     overflow: "hidden",
     alignItems: "center",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.28)",
   },
   avatarCabeza: {
     width: 18,
     height: 18,
     borderRadius: 9,
-    backgroundColor: "#8C6239",
+    backgroundColor: "#E4EAF0",
     marginTop: 10,
   },
   avatarCuerpo: {
@@ -401,7 +617,7 @@ const styles = StyleSheet.create({
     height: 22,
     borderTopLeftRadius: 16,
     borderTopRightRadius: 16,
-    backgroundColor: "#8C6239",
+    backgroundColor: "#E4EAF0",
     marginTop: 4,
   },
   avatarFoto: {
@@ -413,71 +629,49 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
   nombre: {
-    color: "#FFFFFF",
+    color: "#1A2B3C",
     fontSize: 17,
     fontWeight: "800",
   },
   documento: {
     marginTop: 2,
-    color: "rgba(255,255,255,0.72)",
+    color: "#6B7788",
     fontSize: 12,
     fontWeight: "500",
-  },
-  perfilAcciones: {
-    alignItems: "flex-end",
-    gap: 8,
-  },
-  on: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 5,
-    backgroundColor: "#243056",
-    borderRadius: 999,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-  },
-  onPunto: {
-    width: 7,
-    height: 7,
-    borderRadius: 4,
-    backgroundColor: "#3DDC97",
-  },
-  onTexto: {
-    color: "#3DDC97",
-    fontSize: 11,
-    fontWeight: "800",
-  },
-  salir: {
-    backgroundColor: "#EEF1F6",
-    borderRadius: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 7,
-  },
-  salirTexto: {
-    color: "#2A3148",
-    fontSize: 13,
-    fontWeight: "700",
   },
   objetivo: {
     marginTop: 8,
     flexDirection: "row",
     alignItems: "center",
     gap: 10,
-    backgroundColor: "#FFFFFF",
+    backgroundColor: "rgba(255,255,255,0.96)",
     borderRadius: 16,
     paddingHorizontal: 12,
     paddingVertical: 10,
+    borderWidth: 1,
+    borderColor: "#E8EEF2",
     shadowColor: "#1A2744",
-    shadowOpacity: 0.06,
-    shadowRadius: 10,
+    shadowOpacity: 0.1,
+    shadowRadius: 12,
     shadowOffset: { width: 0, height: 4 },
-    elevation: 2,
+    elevation: 3,
   },
   objetivoTexto: {
     flex: 1,
   },
+  horaFila: {
+    marginTop: 4,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+  },
+  relojMini: {
+    width: 16,
+    height: 16,
+    transform: [{ scale: 0.7 }],
+  },
   objetivoNombre: {
-    color: "#1C2434",
+    color: "#1A2B3C",
     fontSize: 15,
     fontWeight: "800",
   },
@@ -488,21 +682,32 @@ const styles = StyleSheet.create({
     fontWeight: "500",
   },
   programado: {
-    backgroundColor: "#E7F8EE",
+    backgroundColor: "transparent",
     borderRadius: 999,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
+    paddingHorizontal: 0,
+    paddingVertical: 0,
   },
   programadoTexto: {
-    color: "#1F9D55",
+    color: "#3B82F6",
     fontSize: 10,
     fontWeight: "800",
     letterSpacing: 0.3,
   },
+  seccionFila: {
+    marginTop: 14,
+    marginBottom: 8,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  seccionMarca: {
+    width: 4,
+    height: 18,
+    borderRadius: 2,
+    backgroundColor: "#FFFFFF",
+  },
   seccion: {
-    marginTop: 10,
-    marginBottom: 6,
-    color: "#1C2434",
+    color: "#FFFFFF",
     fontSize: 16,
     fontWeight: "800",
   },
@@ -514,42 +719,209 @@ const styles = StyleSheet.create({
   },
   tarjeta: {
     width: "48%",
-    backgroundColor: "#FFFFFF",
     borderRadius: 16,
-    paddingHorizontal: 12,
-    paddingTop: 10,
-    paddingBottom: 8,
-    shadowColor: "#1A2744",
-    shadowOpacity: 0.06,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 2,
+    paddingHorizontal: 8,
+    paddingTop: 24,
+    paddingBottom: 16,
+    minHeight: 148,
+    borderWidth: 1,
+    overflow: "hidden",
+  },
+  tarjetaAncha: {
+    width: "100%",
+  },
+  tarjetaTope: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  tarjetaTexto: {
+    flex: 1,
+    marginLeft: 10,
+  },
+  iconoCirculo: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: "#FFFFFF",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  iconoCentro: {
+    alignItems: "center",
+  },
+  globo: {
+    width: 66,
+    height: 62,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  globoBadge: {
+    position: "absolute",
+    top: 0,
+    right: 0,
+    minWidth: 22,
+    height: 22,
+    paddingHorizontal: 4,
+    borderRadius: 11,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#E53935",
+    borderWidth: 2,
+    borderColor: "#FFFFFF",
+  },
+  globoNumero: {
+    color: "#FFFFFF",
+    fontSize: 11,
+    fontWeight: "800",
+    lineHeight: 13,
+  },
+  iconoCuadro: {
+    width: 54,
+    height: 54,
+    borderRadius: 16,
+    alignItems: "center",
+    justifyContent: "center",
+    overflow: "hidden",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.28)",
+  },
+  iconoBrillo: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 28,
+    backgroundColor: "rgba(255,255,255,0.32)",
+  },
+  iconoSombra: {
+    position: "absolute",
+    width: 34,
+    height: 34,
+    borderRadius: 10,
+    backgroundColor: "rgba(0,0,0,0.18)",
+    top: 14,
+    left: 12,
+  },
+  iconoDibujo: {
+    zIndex: 1,
+  },
+  iconoTurno: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#3B82F6",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.35)",
+  },
+  cuenta: {
+    flex: 1,
+    marginLeft: 8,
+    justifyContent: "center",
+  },
+  cuentaNumero: {
+    color: "#1A2B3C",
+    fontSize: 28,
+    fontWeight: "800",
+    lineHeight: 30,
+  },
+  cuentaEtiqueta: {
+    flex: 1,
+    marginLeft: 8,
+    color: "#FFFFFF",
+    fontSize: 15,
+    fontWeight: "600",
+  },
+  tarjetaPie: {
+    marginTop: 8,
+    alignItems: "center",
+    justifyContent: "center",
+    minHeight: 26,
+  },
+  pieFlecha: {
+    position: "absolute",
+    right: 0,
+  },
+  tarjetaTituloPie: {
+    width: "100%",
+    marginTop: 0,
+    paddingRight: 12,
+    textAlign: "center",
+    fontSize: 17,
+    lineHeight: 22,
+  },
+  pastillaLado: {
+    flex: 1,
+    minWidth: 0,
+    marginTop: 0,
+    marginLeft: 8,
+    alignSelf: "center",
+  },
+  iconoPin: {
+    backgroundColor: "#138FEF",
+  },
+  chevron: {
+    fontSize: 22,
+    fontWeight: "700",
+    lineHeight: 24,
   },
   tarjetaTitulo: {
-    marginTop: 6,
-    color: "#1C2434",
-    fontSize: 14,
+    marginTop: 8,
+    color: "#FFFFFF",
+    fontSize: 17,
+    fontWeight: "700",
+  },
+  tarjetaTituloFila: {
+    color: "#1A2B3C",
+    fontSize: 19,
     fontWeight: "800",
   },
   tarjetaDetalle: {
     marginTop: 2,
-    color: "#8B93A7",
+    color: "#7B8798",
     fontSize: 12,
   },
-  tarjetaEstado: {
-    marginTop: 4,
-    fontSize: 12,
-    fontWeight: "800",
+  pastilla: {
+    alignSelf: "flex-start",
+    marginTop: 8,
+    borderRadius: 999,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+  },
+  pastillaTexto: {
+    fontSize: 11,
+    fontWeight: "700",
   },
   emergencia: {
-    marginTop: 10,
-    height: 46,
+    marginTop: 11,
+    minHeight: 80,
     borderRadius: 16,
-    backgroundColor: "#F04438",
+    backgroundColor: "rgba(232, 104, 104, 0.82)",
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 14,
+    paddingTop: 6,
+    gap: 12,
+    borderWidth: 1,
+    borderColor: "#F5B0B0",
+  },
+  emergenciaIcono: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: "rgba(255,255,255,0.28)",
     alignItems: "center",
     justifyContent: "center",
   },
+  emergenciaCorte: {
+    width: 1,
+    height: 28,
+    backgroundColor: "rgba(255,255,255,0.75)",
+  },
   emergenciaTexto: {
+    flex: 1,
     color: "#FFFFFF",
     fontSize: 15,
     fontWeight: "800",
@@ -560,10 +932,13 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-around",
     alignItems: "center",
-    backgroundColor: "#FFFFFF",
-    borderTopWidth: 1,
-    borderTopColor: "#EEF0F4",
-    paddingTop: 8,
+    backgroundColor: "rgba(186, 198, 208, 0.35)",
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    borderWidth: 1,
+    borderBottomWidth: 0,
+    borderColor: "#D8E2E8",
+    paddingTop: 14,
     paddingBottom: 10,
   },
   tab: {
@@ -573,13 +948,41 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
   },
   tabTexto: {
-    color: "#9AA3B2",
-    fontSize: 11,
-    fontWeight: "600",
+    color: "#2A3444",
+    fontSize: 12,
+    fontWeight: "500",
   },
   tabActivo: {
-    color: "#2F6BFF",
-    fontWeight: "700",
+    color: "#0B1220",
+    fontWeight: "800",
+  },
+  tabLinea: {
+    width: 28,
+    height: 3,
+    borderRadius: 2,
+    backgroundColor: "#0B1220",
+  },
+  tabLineaVacia: {
+    width: 28,
+    height: 3,
+  },
+  menuAjuste: {
+    width: 24,
+    height: 24,
+  },
+  menuAjusteLinea: {
+    position: "absolute",
+    left: 1,
+    width: 22,
+    height: 2.5,
+    borderRadius: 2,
+  },
+  menuAjustePerilla: {
+    position: "absolute",
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    borderWidth: 1.5,
   },
   iconoCaja: {
     width: 26,
@@ -768,6 +1171,102 @@ const styles = StyleSheet.create({
     height: 2,
     borderRadius: 1,
   },
+  pinCabeza: {
+    position: "absolute",
+    top: 2,
+    left: 7,
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    borderWidth: 2,
+  },
+  pinPunta: {
+    position: "absolute",
+    top: 10,
+    left: 8,
+    width: 0,
+    height: 0,
+    borderLeftWidth: 4,
+    borderRightWidth: 4,
+    borderTopWidth: 8,
+    borderLeftColor: "transparent",
+    borderRightColor: "transparent",
+  },
+  relojAro: {
+    position: "absolute",
+    top: 3,
+    left: 4,
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    borderWidth: 2,
+  },
+  relojMano: {
+    position: "absolute",
+    top: 7,
+    left: 11,
+    width: 2,
+    height: 6,
+    borderRadius: 1,
+  },
+  puertaHoja: {
+    position: "absolute",
+    top: 3,
+    left: 5,
+    width: 14,
+    height: 16,
+    borderWidth: 2,
+    borderRadius: 3,
+  },
+  puertaPomo: {
+    position: "absolute",
+    top: 10,
+    left: 14,
+    width: 3,
+    height: 3,
+    borderRadius: 2,
+  },
+  alertaCaja: {
+    width: 22,
+    height: 20,
+    alignItems: "center",
+  },
+  alertaLado: {
+    position: "absolute",
+    top: 2,
+    width: 2.5,
+    height: 16,
+    borderRadius: 2,
+  },
+  alertaLadoIzq: {
+    left: 4,
+    transform: [{ rotate: "-33deg" }],
+  },
+  alertaLadoDer: {
+    right: 4,
+    transform: [{ rotate: "33deg" }],
+  },
+  alertaBase: {
+    position: "absolute",
+    bottom: 1,
+    width: 16,
+    height: 2.5,
+    borderRadius: 2,
+  },
+  alertaPalo: {
+    position: "absolute",
+    top: 5,
+    width: 2.5,
+    height: 7,
+    borderRadius: 1,
+  },
+  alertaPunto: {
+    position: "absolute",
+    top: 14,
+    width: 2.5,
+    height: 2.5,
+    borderRadius: 2,
+  },
   ajustePunto: {
     position: "absolute",
     width: 6,
@@ -775,5 +1274,120 @@ const styles = StyleSheet.create({
     borderRadius: 3,
     borderWidth: 2,
     backgroundColor: "#FFFFFF",
+  },
+  trabajoCaja: {
+    width: 38,
+    height: 38,
+  },
+  trabajoClip: {
+    position: "absolute",
+    top: 1,
+    left: 12,
+    width: 14,
+    height: 7,
+    borderTopLeftRadius: 3,
+    borderTopRightRadius: 3,
+    borderWidth: 2,
+  },
+  trabajoHoja: {
+    position: "absolute",
+    top: 6,
+    left: 6,
+    width: 26,
+    height: 28,
+    borderWidth: 2,
+    borderRadius: 4,
+  },
+  trabajoBanda: {
+    position: "absolute",
+    top: 12,
+    left: 11,
+    width: 16,
+    height: 3,
+    borderRadius: 1,
+  },
+  trabajoRaya: {
+    position: "absolute",
+    left: 11,
+    height: 2,
+    borderRadius: 1,
+  },
+  trabajoPinAro: {
+    position: "absolute",
+    top: 2,
+    left: 11,
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    borderWidth: 3,
+  },
+  trabajoPinPunto: {
+    position: "absolute",
+    top: 7,
+    left: 16,
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+  },
+  trabajoPinPunta: {
+    position: "absolute",
+    top: 15,
+    left: 13,
+    width: 0,
+    height: 0,
+    borderLeftWidth: 6,
+    borderRightWidth: 6,
+    borderTopWidth: 16,
+  },
+  salidaMarco: {
+    position: "absolute",
+    top: 5,
+    left: 4,
+    width: 16,
+    height: 28,
+    borderWidth: 2,
+    borderRadius: 2,
+  },
+  salidaVara: {
+    position: "absolute",
+    top: 18,
+    left: 16,
+    width: 12,
+    height: 2,
+    borderRadius: 1,
+  },
+  salidaPunta: {
+    position: "absolute",
+    top: 14,
+    left: 25,
+    width: 0,
+    height: 0,
+    borderTopWidth: 5,
+    borderBottomWidth: 5,
+    borderLeftWidth: 7,
+  },
+  trabajoPagina: {
+    position: "absolute",
+    top: 4,
+    left: 8,
+    width: 22,
+    height: 30,
+    borderWidth: 2,
+    borderRadius: 3,
+  },
+  trabajoDoblez: {
+    position: "absolute",
+    top: 4,
+    left: 22,
+    width: 0,
+    height: 0,
+    borderLeftWidth: 8,
+    borderBottomWidth: 8,
+  },
+  trabajoRayaDoc: {
+    position: "absolute",
+    left: 12,
+    height: 2,
+    borderRadius: 1,
   },
 });

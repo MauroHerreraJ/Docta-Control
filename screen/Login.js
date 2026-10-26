@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  ImageBackground,
   KeyboardAvoidingView,
   Pressable,
   ScrollView,
@@ -16,7 +17,7 @@ import {
   guardarUsuarioBiometria,
   reconocerUsuario,
 } from "../util/biometria";
-import { idDeEsteCelular, ingresarVigilador } from "../util/sesion";
+import { empresaDeEsteCelular, idDeEsteCelular, ingresarVigilador } from "../util/sesion";
 
 export default function Login({ onIngresar }) {
   const [usuario, setUsuario] = useState("");
@@ -30,6 +31,7 @@ export default function Login({ onIngresar }) {
   const [reconocido, setReconocido] = useState(false);
   const [reconociendo, setReconociendo] = useState(false);
   const [codigo, setCodigo] = useState("");
+  const [empresa, setEmpresa] = useState("");
 
   const reconocer = async () => {
     setReconociendo(true);
@@ -50,26 +52,29 @@ export default function Login({ onIngresar }) {
 
   useEffect(() => {
     let vivo = true;
+    const leerEmpresa = async () => {
+      try {
+        const nombre = await empresaDeEsteCelular();
+        if (vivo) setEmpresa(nombre);
+      } catch {
+        /* sin respuesta se sigue mostrando el código */
+      }
+    };
     idDeEsteCelular().then((id) => {
       if (vivo) setCodigo(id || "");
     });
-    estadoBiometria().then(async (estado) => {
+    leerEmpresa();
+    const timer = setInterval(leerEmpresa, 8000);
+    estadoBiometria().then((estado) => {
       if (!vivo) return;
       setBioOk(estado.disponible);
       setAviso(estado.aviso);
       if (!estado.disponible || !estado.usuario) return;
       setGuardado(estado.usuario);
-      setReconociendo(true);
-      const ok = await reconocerUsuario();
-      if (!vivo) return;
-      setReconociendo(false);
-      if (ok) {
-        setUsuario(estado.usuario);
-        setReconocido(true);
-      }
     });
     return () => {
       vivo = false;
+      clearInterval(timer);
     };
   }, []);
 
@@ -129,23 +134,42 @@ export default function Login({ onIngresar }) {
   };
 
   return (
-    <KeyboardAvoidingView style={styles.fondo}>
+    <ImageBackground
+      source={require("../assets/ondas-fondo.png")}
+      style={styles.fondo}
+      imageStyle={styles.fondoImagen}
+      resizeMode="cover"
+    >
+    <KeyboardAvoidingView style={styles.capa}>
       <ScrollView
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.contenido}
       >
+      <Text style={styles.marca}>DoctaControl</Text>
       <View style={styles.tarjeta}>
-        <Text style={styles.marca}>Docta</Text>
         <Text style={styles.titulo}>Ingreso de vigilador</Text>
-        <Text selectable style={styles.codigo}>
-          {codigo || "…"}
-        </Text>
-        <Text style={styles.ayuda}>
-          Cargá este código en la empresa antes de entrar. Sin eso, el usuario no ingresa.
-        </Text>
+        {empresa ? (
+          <>
+            <Text style={styles.empresa}>{empresa}</Text>
+            <Text style={styles.ayuda}>Este celular está registrado en esta empresa.</Text>
+          </>
+        ) : (
+          <>
+            <Text selectable style={[styles.codigo, codigo.length === 6 && styles.codigoCorto]}>
+              {codigo || "…"}
+            </Text>
+            <Text style={styles.ayuda}>
+              Cargá este código en la empresa antes de entrar. Sin eso, el usuario no ingresa.
+            </Text>
+          </>
+        )}
         <Text style={styles.ayuda}>Usá el usuario y la clave del panel.</Text>
-        {aviso ? <Text style={styles.aviso}>{aviso}</Text> : null}
+        {aviso ? (
+          <View style={styles.avisoCaja}>
+            <Text style={styles.aviso}>{aviso}</Text>
+          </View>
+        ) : null}
         {guardado ? (
           <Pressable onPress={olvidar} disabled={entrando} hitSlop={6}>
             <Text style={styles.leyenda}>
@@ -162,7 +186,7 @@ export default function Login({ onIngresar }) {
             disabled={reconociendo || entrando}
           >
             {reconociendo ? (
-              <ActivityIndicator color="#0F76C4" />
+              <ActivityIndicator color="#FFFFFF" />
             ) : (
               <Text style={styles.botonSuaveTexto}>Reconocer con biometría</Text>
             )}
@@ -190,7 +214,7 @@ export default function Login({ onIngresar }) {
             returnKeyType="done"
             onSubmitEditing={ingresar}
           />
-          <Pressable onPress={() => setVerClave((v) => !v)} hitSlop={8}>
+          <Pressable onPress={() => setVerClave((v) => !v)} hitSlop={8} style={styles.verBtn}>
             <Text style={styles.ver}>{verClave ? "Ocultar" : "Ver"}</Text>
           </Pressable>
         </View>
@@ -211,13 +235,20 @@ export default function Login({ onIngresar }) {
       </View>
       </ScrollView>
     </KeyboardAvoidingView>
+    </ImageBackground>
   );
 }
 
 const styles = StyleSheet.create({
   fondo: {
     flex: 1,
-    backgroundColor: "#F4FBFE",
+    backgroundColor: "#445864",
+  },
+  fondoImagen: {
+    opacity: 0.55,
+  },
+  capa: {
+    flex: 1,
   },
   contenido: {
     flexGrow: 1,
@@ -230,44 +261,62 @@ const styles = StyleSheet.create({
     paddingTop: 8,
   },
   tarjeta: {
-    backgroundColor: "#ffffff",
-    borderRadius: 20,
+    backgroundColor: "rgba(186, 198, 208, 0.35)",
+    borderRadius: 16,
     padding: 22,
     borderWidth: 1,
-    borderColor: "#D7F1FC",
-    shadowColor: "#0F76C4",
-    shadowOpacity: 0.08,
-    shadowRadius: 16,
-    shadowOffset: { width: 0, height: 8 },
-    elevation: 3,
+    borderColor: "#D8E2E8",
   },
   marca: {
-    color: "#0F76C4",
+    color: "#FFFFFF",
     fontSize: 28,
-    fontWeight: "700",
+    fontWeight: "800",
+    textAlign: "center",
+    marginBottom: 16,
   },
   titulo: {
-    marginTop: 8,
-    color: "#0B3A5B",
+    color: "#FFFFFF",
     fontSize: 18,
-    fontWeight: "700",
+    fontWeight: "800",
   },
   ayuda: {
     marginTop: 4,
     marginBottom: 8,
-    color: "#5C7A90",
+    color: "rgba(255,255,255,0.9)",
     fontSize: 13,
   },
   codigo: {
+    marginTop: 8,
     marginBottom: 8,
-    color: "#0B3A5B",
+    color: "#FFFFFF",
     fontSize: 13,
     fontWeight: "700",
   },
+  codigoCorto: {
+    fontSize: 22,
+    letterSpacing: 3,
+  },
+  empresa: {
+    marginTop: 8,
+    marginBottom: 8,
+    color: "#FFFFFF",
+    fontSize: 18,
+    fontWeight: "800",
+  },
+  avisoCaja: {
+    marginBottom: 12,
+    backgroundColor: "#FFF5F5",
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#F5B0B0",
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
   aviso: {
-    marginBottom: 10,
-    color: "#8A5A00",
+    color: "#C62828",
     fontSize: 13,
+    fontWeight: "700",
+    lineHeight: 18,
   },
   leyenda: {
     marginBottom: 12,
@@ -278,34 +327,34 @@ const styles = StyleSheet.create({
   botonSuave: {
     marginBottom: 14,
     minHeight: 46,
-    borderRadius: 12,
+    borderRadius: 16,
     borderWidth: 1,
-    borderColor: "#9FDFFC",
-    backgroundColor: "#F8FDFF",
+    borderColor: "#8FB8EF",
+    backgroundColor: "rgba(58, 113, 183, 0.45)",
     alignItems: "center",
     justifyContent: "center",
   },
   botonSuaveTexto: {
-    color: "#0F76C4",
+    color: "#FFFFFF",
     fontSize: 15,
     fontWeight: "700",
   },
   etiqueta: {
     marginBottom: 6,
-    color: "#0B3A5B",
+    color: "#FFFFFF",
     fontSize: 12,
-    fontWeight: "600",
+    fontWeight: "700",
   },
   campo: {
     marginBottom: 14,
     borderWidth: 1,
-    borderColor: "#9FDFFC",
-    borderRadius: 12,
+    borderColor: "#D8E2E8",
+    borderRadius: 16,
     paddingHorizontal: 12,
     paddingVertical: 12,
     fontSize: 16,
-    color: "#0B3A5B",
-    backgroundColor: "#F8FDFF",
+    color: "#1A2B3C",
+    backgroundColor: "rgba(255,255,255,0.72)",
   },
   claveFila: {
     flexDirection: "row",
@@ -315,11 +364,19 @@ const styles = StyleSheet.create({
     flex: 1,
     marginBottom: 0,
   },
-  ver: {
+  verBtn: {
     marginLeft: 10,
-    color: "#138FEF",
-    fontSize: 13,
-    fontWeight: "700",
+    backgroundColor: "rgba(15, 118, 196, 0.9)",
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderWidth: 1,
+    borderColor: "#6BB0E8",
+  },
+  ver: {
+    color: "#FFFFFF",
+    fontSize: 14,
+    fontWeight: "800",
   },
   error: {
     marginTop: 12,
@@ -329,10 +386,12 @@ const styles = StyleSheet.create({
   boton: {
     marginTop: 18,
     backgroundColor: "#0F76C4",
-    borderRadius: 14,
+    borderRadius: 16,
     minHeight: 48,
     alignItems: "center",
     justifyContent: "center",
+    borderWidth: 1,
+    borderColor: "#6BB0E8",
   },
   botonOn: {
     backgroundColor: "#0B5F9C",

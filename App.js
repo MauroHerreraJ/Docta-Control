@@ -5,6 +5,7 @@ import { useMarco } from "./util/medida";
 import AvisoPush from "./screen/AvisoPush";
 import Configuracion from "./screen/Configuracion";
 import Login from "./screen/Login";
+import Terminos, { terminosYaAceptados } from "./screen/Terminos";
 import Accesos from "./screen/Accesos";
 import Asignaciones from "./screen/Asignaciones";
 import Novedades from "./screen/Novedades";
@@ -14,6 +15,7 @@ import Rondas from "./screen/Rondas";
 import { iniciarConexion, pararConexion, suscribirDiagnostico } from "./util/fondo";
 import { activarPush, cerrarAviso, olvidarPush, revisarAvisoAlVolver } from "./util/push";
 import {
+  borrarTodoDelTelefono,
   restaurarSesion,
   salirVigilador,
   verificarSesion,
@@ -38,7 +40,18 @@ export default function App() {
   const [diag, setDiag] = useState(null);
   const [pagina, setPagina] = useState("principal");
   const [rondaId, setRondaId] = useState(null);
+  const [terminosOk, setTerminosOk] = useState(null);
   const sesionViva = useRef(false);
+
+  useEffect(() => {
+    let vivo = true;
+    terminosYaAceptados().then((ok) => {
+      if (vivo) setTerminosOk(ok);
+    });
+    return () => {
+      vivo = false;
+    };
+  }, []);
 
   useEffect(() => {
     let vivo = true;
@@ -81,7 +94,7 @@ export default function App() {
 
   useEffect(() => {
     const token = usuario?.token;
-    if (!token) return undefined;
+    if (!token || !terminosOk) return undefined;
     sesionViva.current = true;
     let vivo = true;
     iniciarConexion(token)
@@ -109,7 +122,22 @@ export default function App() {
       off();
       estado.remove();
     };
-  }, [usuario?.token]);
+  }, [usuario?.token, terminosOk]);
+
+  const reiniciar = async () => {
+    if (saliendo) return;
+    setSaliendo(true);
+    sesionViva.current = false;
+    setPagina("principal");
+    setRondaId(null);
+    cerrarAviso();
+    olvidarPush();
+    await pararConexion();
+    await borrarTodoDelTelefono();
+    setUsuario(null);
+    setTerminosOk(false);
+    setSaliendo(false);
+  };
 
   const salir = async () => {
     if (saliendo) return;
@@ -120,10 +148,16 @@ export default function App() {
     cerrarAviso();
     olvidarPush();
     const token = usuario?.token;
-    await pararConexion();
     setUsuario(null);
-    await salirVigilador(token);
-    setSaliendo(false);
+    try {
+      await Promise.race([
+        pararConexion(),
+        new Promise((resolver) => setTimeout(resolver, 4000)),
+      ]);
+      await salirVigilador(token);
+    } finally {
+      setSaliendo(false);
+    }
   };
 
   return (
@@ -131,16 +165,18 @@ export default function App() {
       style={{
         flex: 1,
         overflow: "hidden",
-        backgroundColor: usuario ? "#F5F6F8" : "#F4FBFE",
+        backgroundColor: terminosOk ? "#445864" : "#FFFFFF",
         paddingTop: arriba,
         paddingBottom: teclado > 0 ? teclado : abajo,
       }}
     >
-      <StatusBar style="dark" />
-      {lista ? (
+      <StatusBar style={terminosOk ? "light" : "dark"} />
+      {lista || terminosOk === null ? (
         <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
           <ActivityIndicator size="large" color="#0F76C4" />
         </View>
+      ) : !terminosOk ? (
+        <Terminos onAceptar={() => setTerminosOk(true)} />
       ) : usuario ? (
         <View style={{ flex: 1 }}>
           {pagina === "configuracion" ? (
@@ -151,6 +187,7 @@ export default function App() {
               enFondo={enFondo}
               diag={diag}
               onVolver={() => setPagina("principal")}
+              onReiniciar={reiniciar}
             />
           ) : pagina === "asignaciones" ? (
             <Asignaciones token={usuario.token} onVolver={() => setPagina("principal")} />

@@ -41,7 +41,7 @@ export default function AvisoPush() {
 const styles = StyleSheet.create({
   pantalla: {
     flex: 1,
-    backgroundColor: "#F4FBFE",
+    backgroundColor: "#FFFFFF",
     justifyContent: "center",
     paddingHorizontal: 22,
     paddingVertical: 48,

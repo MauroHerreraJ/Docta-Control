@@ -1,6 +1,6 @@
 import * as Location from "expo-location";
 import * as TaskManager from "expo-task-manager";
-import { Linking, PermissionsAndroid, Platform } from "react-native";
+import { BackHandler, Linking, PermissionsAndroid, Platform } from "react-native";
 import { consultarSolicitud, olvidarSesion, responderSolicitud, restaurarSesion } from "./sesion";
 
 export const TAREA_FONDO = "docta5-servicio";
@@ -134,6 +134,10 @@ async function correr(trabajo) {
   } catch (error) {
     if (error?.cancelada || cerrada) return false;
     const status = Number(error?.status);
+    if (status === 401) {
+      ordenCerrarApp();
+      return false;
+    }
     const http = Number.isFinite(status) ? status : 0;
     const mensaje = String(error?.message || "Error de red");
     publicar({ ultimoHttp: http, ultimoError: mensaje });
@@ -429,6 +433,18 @@ export async function despertarConsulta() {
   if (!consultaTimer && !cerrada) programarConsulta(token, ok ? undefined : REINTENTO_MS);
   await arrancarServicio().catch(() => false);
   return true;
+}
+
+/** El panel ordenó cerrar: corta el servicio y sale de la app. */
+export function ordenCerrarApp() {
+  cerrada = true;
+  cortarConsulta();
+  tokenEnviado = "";
+  if (corte) corte.abort();
+  corte = null;
+  olvidarSesion().catch(() => {});
+  pararServicio().catch(() => {});
+  if (Platform.OS === "android") BackHandler.exitApp();
 }
 
 /** Logout: corta consultas, para el aviso y olvida la sesión local. */

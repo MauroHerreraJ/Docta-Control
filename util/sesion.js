@@ -1,30 +1,10 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { Platform } from "react-native";
+import { cuerpoDeEquipo } from "./equipo";
 
 const API_PUBLICA = "https://doctacontrol-e7803a4382c9.herokuapp.com";
-const API_SIMULADOR = "http://10.0.2.2:4000";
-
-function esSimulador() {
-  const c = Platform.constants || {};
-  const texto = [c.Fingerprint, c.Model, c.Brand, c.Manufacturer]
-    .filter(Boolean)
-    .join(" ")
-    .toLowerCase();
-  return (
-    texto.includes("sdk_gphone") ||
-    texto.includes("google_sdk") ||
-    texto.includes("emulator") ||
-    texto.includes("generic") ||
-    texto.includes("android sdk built for") ||
-    texto.includes("goldfish") ||
-    texto.includes("ranchu") ||
-    texto.includes("simulator")
-  );
-}
 
 function apiDe() {
-  if (process.env.EXPO_PUBLIC_API_URL) return process.env.EXPO_PUBLIC_API_URL;
-  return esSimulador() ? API_SIMULADOR : API_PUBLICA;
+  return process.env.EXPO_PUBLIC_API_URL || API_PUBLICA;
 }
 const CLIENT = "5-doctacontrol vigicontrol-app";
 const CLAVE_SESION = "@docta5_sesion";
@@ -43,13 +23,51 @@ function mensajeDe(data, respaldo) {
   return respaldo;
 }
 
-function nuevoId() {
-  if (globalThis.crypto?.randomUUID) return globalThis.crypto.randomUUID();
-  return `d${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`;
+const HEX = "0123456789ABCDEF";
+
+function entero(max) {
+  if (globalThis.crypto?.getRandomValues) {
+    const buf = new Uint32Array(1);
+    globalThis.crypto.getRandomValues(buf);
+    return buf[0] % max;
+  }
+  return Math.floor(Math.random() * max);
+}
+
+/** 6 dígitos hexadecimales. Los códigos ya guardados no se regeneran. */
+function codigoNuevo() {
+  let codigo = "";
+  for (let i = 0; i < 6; i += 1) codigo += HEX[entero(16)];
+  return codigo;
+}
+
+async function codigoEstaLibre(codigo) {
+  try {
+    const res = await fetch(`${apiDe()}/api/dispositivos/codigo-libre`, {
+      method: "GET",
+      headers: {
+        Accept: "application/json",
+        "X-Client-Info": CLIENT,
+        "X-Device-Id": codigo,
+      },
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) return true;
+    return data?.libre !== false;
+  } catch {
+    return true;
+  }
 }
 
 function codigoDe(valor) {
   return String(valor || "").replace(/^5-doctacontrol:/, "").trim();
+}
+
+/** Nombre de la empresa si este celular ya está autorizado. Si no, vacío. */
+export async function empresaDeEsteCelular() {
+  const data = await pedir("/api/dispositivos/estado", { method: "GET", timeoutMs: 8000 });
+  if (!data?.registrado) return "";
+  return String(data.empresa || "").trim();
 }
 
 export async function idDeEsteCelular() {
@@ -58,7 +76,12 @@ export async function idDeEsteCelular() {
     await AsyncStorage.setItem(CLAVE_DEVICE, guardado).catch(() => {});
     return guardado;
   }
-  const id = nuevoId();
+  let id = "";
+  for (let i = 0; i < 8 && !id; i += 1) {
+    const candidato = codigoNuevo();
+    if (await codigoEstaLibre(candidato)) id = candidato;
+  }
+  if (!id) id = codigoNuevo();
   await AsyncStorage.setItem(CLAVE_DEVICE, id).catch(() => {});
   return id;
 }
@@ -78,6 +101,12 @@ export async function restaurarSesion() {
 export async function olvidarSesion() {
   sesionEnMemoria = null;
   await AsyncStorage.removeItem(CLAVE_SESION).catch(() => {});
+}
+
+/** Deja el teléfono como una instalación nueva. */
+export async function borrarTodoDelTelefono() {
+  sesionEnMemoria = null;
+  await AsyncStorage.clear();
 }
 
 async function pedir(path, { method, body, token, timeoutMs = 20000, signal }) {
@@ -179,15 +208,14 @@ export async function ingresarVigilador(usuario, clave) {
   const deviceId = await idDeEsteCelular();
   const data = await pedir("/api/login", {
     method: "POST",
-    body: {
+    body: await cuerpoDeEquipo({
       login,
       username: login,
       password,
       app: "vigicontrol",
       deviceId,
       source: "5-doctacontrol",
-      platform: Platform.OS,
-    },
+    }),
   });
   if (String(data?.role || "").toLowerCase() !== "vigilador") {
     if (data?.token) {
@@ -227,7 +255,7 @@ export async function mantenerSesion(token, signal) {
     method: "POST",
     token,
     signal,
-    body: { deviceId, platform: Platform.OS },
+    body: await cuerpoDeEquipo({ deviceId }),
   });
 }
 
@@ -263,14 +291,13 @@ export async function responderConGeo(token, punto, signal) {
     method: "POST",
     token,
     signal,
-    body: {
+    body: await cuerpoDeEquipo({
       deviceId,
-      platform: Platform.OS,
       source: "5-doctacontrol",
       lat,
       lng,
       ...(Number.isFinite(accuracy) && accuracy >= 0 ? { accuracy: Math.round(accuracy) } : {}),
-    },
+    }),
   });
 }
 
@@ -292,6 +319,12 @@ export async function informarHombreVivo(token, { clientId, programaId, cumplio,
     if (Number.isFinite(accuracy) && accuracy >= 0) body.accuracy = Math.round(accuracy);
   }
   return pedir("/api/hombre-vivo/mias", { method: "POST", token, body });
+}
+
+/** Turno en curso del vigilador: objetivo, horario y estado. */
+export async function turnoActual(token) {
+  if (!token) return null;
+  return pedir(`/api/asignaciones/mias?_t=${Date.now()}`, { method: "GET", token });
 }
 
 /** Rondas del turno, con puntos y marcas. */
