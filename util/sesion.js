@@ -63,14 +63,10 @@ function codigoDe(valor) {
   return String(valor || "").replace(/^5-doctacontrol:/, "").trim();
 }
 
-/** Nombre de la empresa si este celular ya está autorizado. Si no, vacío. */
-export async function empresaDeEsteCelular() {
-  const data = await pedir("/api/dispositivos/estado", { method: "GET", timeoutMs: 8000 });
-  if (!data?.registrado) return "";
-  return String(data.empresa || "").trim();
-}
+/** Una sola generación aunque la pantalla y el login lo pidan juntos. */
+let idDeEsteCelularPendiente = null;
 
-export async function idDeEsteCelular() {
+async function resolverIdDeEsteCelular() {
   const guardado = codigoDe(await AsyncStorage.getItem(CLAVE_DEVICE).catch(() => ""));
   if (guardado) {
     await AsyncStorage.setItem(CLAVE_DEVICE, guardado).catch(() => {});
@@ -84,6 +80,23 @@ export async function idDeEsteCelular() {
   if (!id) id = codigoNuevo();
   await AsyncStorage.setItem(CLAVE_DEVICE, id).catch(() => {});
   return id;
+}
+
+/** Nombre de la empresa si este celular ya está autorizado. Si no, vacío. */
+export async function empresaDeEsteCelular() {
+  const data = await pedir("/api/dispositivos/estado", { method: "GET", timeoutMs: 8000 });
+  if (!data?.registrado) return "";
+  return String(data.empresa || "").trim();
+}
+
+export function idDeEsteCelular() {
+  if (!idDeEsteCelularPendiente) {
+    idDeEsteCelularPendiente = resolverIdDeEsteCelular().catch((error) => {
+      idDeEsteCelularPendiente = null;
+      throw error;
+    });
+  }
+  return idDeEsteCelularPendiente;
 }
 
 export async function restaurarSesion() {
@@ -161,7 +174,7 @@ async function pedir(path, { method, body, token, timeoutMs = 20000, signal }) {
   return data;
 }
 
-async function pedirForm(path, form, token) {
+async function pedirForm(path, form, token, onProgress) {
   const deviceId = await idDeEsteCelular();
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
@@ -171,7 +184,14 @@ async function pedirForm(path, form, token) {
     xhr.setRequestHeader("X-Client-Info", CLIENT);
     xhr.setRequestHeader("X-Device-Id", deviceId);
     if (token) xhr.setRequestHeader("Authorization", `Bearer ${token}`);
-    xhr.timeout = 60000;
+    xhr.timeout = 90000;
+    if (typeof onProgress === "function" && xhr.upload) {
+      xhr.upload.onprogress = (evento) => {
+        if (!evento.lengthComputable || !evento.total) return;
+        const pct = Math.max(0, Math.min(100, Math.round((evento.loaded / evento.total) * 100)));
+        onProgress(pct);
+      };
+    }
     xhr.onload = () => {
       let data = {};
       try {
@@ -180,6 +200,7 @@ async function pedirForm(path, form, token) {
         data = {};
       }
       if (xhr.status >= 200 && xhr.status < 300) {
+        if (typeof onProgress === "function") onProgress(100);
         resolve(data);
         return;
       }
@@ -372,10 +393,13 @@ export async function novedadesDelTurno(token) {
   return pedir(`/api/novedades/mias?_t=${Date.now()}`, { method: "GET", token });
 }
 
-export async function crearNovedad(token, { texto, at, clientId, fotos = [], audio } = {}) {
+export async function crearNovedad(
+  token,
+  { texto, at, clientId, fotos = [], audio, video, onProgress } = {},
+) {
   if (!token) return null;
   const fotosOk = (fotos || []).filter((foto) => foto?.uri).slice(0, 3);
-  const hayArchivos = fotosOk.length > 0 || Boolean(audio?.uri);
+  const hayArchivos = fotosOk.length > 0 || Boolean(audio?.uri) || Boolean(video?.uri);
   if (!hayArchivos) {
     return pedir("/api/novedades/mias", {
       method: "POST",
@@ -401,7 +425,15 @@ export async function crearNovedad(token, { texto, at, clientId, fotos = [], aud
       type: audio.type || "audio/mp4",
     });
   }
-  return pedirForm("/api/novedades/mias", form, token);
+  if (video?.uri) {
+    form.append("video", {
+      uri: video.uri,
+      name: video.name || "novedad.mp4",
+      type: video.type || "video/mp4",
+    });
+  }
+  if (typeof onProgress === "function") onProgress(0);
+  return pedirForm("/api/novedades/mias", form, token, onProgress);
 }
 
 /** Tareas que el panel le mandó a este vigilador en el día. */

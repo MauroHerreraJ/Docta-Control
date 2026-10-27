@@ -254,7 +254,7 @@ export default function RondaRecorrido({ token, rondaId, onVolver }) {
       (item) => String(item.nfcCodigo || "").trim().toLowerCase() === String(codigo).toLowerCase(),
     );
     if (!punto) {
-      setAviso("Este tag no está en la ronda");
+      setAviso(actual.vista?.tipo === "qr" ? "Este QR no está en la ronda" : "Este tag no está en la ronda");
       return;
     }
     const ya = (actual.vista?.marcas || []).some((marca) => marca.puntoId === String(punto._id));
@@ -263,6 +263,24 @@ export default function RondaRecorrido({ token, rondaId, onVolver }) {
       return;
     }
     const lugar = actual.pos;
+    const radioLocal = Number(actual.vista?.radioM) || RADIO_M;
+    const puntoLat = Number(punto.lat);
+    const puntoLng = Number(punto.lng);
+    if (!Number.isFinite(puntoLat) || !Number.isFinite(puntoLng)) {
+      setAviso("Este punto no tiene ubicación cargada en el panel");
+      return;
+    }
+    if (!lugar || !Number.isFinite(lugar.lat) || !Number.isFinite(lugar.lng)) {
+      setAviso("Esperá la ubicación GPS. El punto se marca con el código y el geo.");
+      return;
+    }
+    const dist = distanceMeters(lugar.lat, lugar.lng, puntoLat, puntoLng);
+    if (dist > radioLocal) {
+      setAviso(
+        `Código ok, pero estás a ${formatMetros(dist)}. Acercate a menos de ${radioLocal} m.`,
+      );
+      return;
+    }
     setBusy(true);
     const body = {
       kind: "marcar",
@@ -513,13 +531,15 @@ export default function RondaRecorrido({ token, rondaId, onVolver }) {
       ? "El turno no está en curso"
       : !iniciada
         ? esQr
-          ? "Iniciá la ronda y apuntá al QR"
-          : "Iniciá la ronda y acercá el tag"
+          ? "Iniciá la ronda: QR + ubicación"
+          : "Iniciá la ronda: tag + ubicación"
         : cerrada
           ? "Ronda completa"
-          : esQr
-            ? "Apuntá al QR del puesto"
-            : "Acercá el tag NFC del puesto"
+          : !pos
+            ? "Buscando ubicación..."
+            : esQr
+              ? "Apuntá al QR en el puesto"
+              : "Acercá el tag NFC en el puesto"
     : !pack?.enCurso
       ? "El turno no está en curso"
       : gpsError
@@ -573,19 +593,17 @@ export default function RondaRecorrido({ token, rondaId, onVolver }) {
             })()
           ) : null}
 
-          {esNfc || esQr ? null : (
-            <RecorridoMap
-              puntos={vista.puntos}
-              marcas={vista.marcas}
-              pos={pos}
-              alto={altoMapa}
-              mostrarVos={Boolean(
-                candidato
-                  ? candidato.dist <= CERCA_M
-                  : puntosConDist.some((p) => p.dist != null && p.dist <= CERCA_M),
-              )}
-            />
-          )}
+          <RecorridoMap
+            puntos={vista.puntos}
+            marcas={vista.marcas}
+            pos={pos}
+            alto={esQr ? Math.max(140, Math.round(altoMapa * 0.7)) : altoMapa}
+            mostrarVos={Boolean(
+              candidato
+                ? candidato.dist <= CERCA_M
+                : puntosConDist.some((p) => p.dist != null && p.dist <= CERCA_M),
+            )}
+          />
 
           <ScrollView style={{ flex: 1, minHeight: 0 }} contentContainerStyle={{ paddingBottom: m(8) }}>
             <View style={contenido}>
@@ -610,18 +628,16 @@ export default function RondaRecorrido({ token, rondaId, onVolver }) {
                         ? punto.marca.pending
                           ? "Marcado · pendiente de envío"
                           : "Marcado"
-                        : punto.tramo > 0
-                          ? `${formatMetros(punto.tramo)} a pie desde el anterior${
-                              punto.dist != null && punto.dist <= CERCA_M
-                                ? ` · a ${formatMetros(punto.dist)} de vos`
-                                : ""
-                            }`
-                          : punto.dist != null && punto.dist <= CERCA_M
-                            ? `Inicio · a ${formatMetros(punto.dist)} de vos`
+                        : punto.dist != null
+                          ? punto.dist <= radio
+                            ? `${vista?.tipo === "nfc" ? "Tag" : vista?.tipo === "qr" ? "QR" : "Punto"} · a ${formatMetros(punto.dist)} · listo`
+                            : `${vista?.tipo === "nfc" ? "Tag + geo" : vista?.tipo === "qr" ? "QR + geo" : "Punto"} · a ${formatMetros(punto.dist)} (máx. ${radio} m)`
+                          : punto.tramo > 0
+                            ? `${formatMetros(punto.tramo)} a pie desde el anterior`
                             : vista?.tipo === "nfc"
-                              ? "Pendiente de tag"
+                              ? "Pendiente de tag y ubicación"
                               : vista?.tipo === "qr"
-                                ? "Pendiente de QR"
+                                ? "Pendiente de QR y ubicación"
                                 : "Inicio del recorrido"}
                     </Text>
                   </View>

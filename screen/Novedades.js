@@ -21,6 +21,7 @@ function Icono({ name, size = 16, color = "#222" }) {
     "chevron-back": "‹",
     "document-text-outline": "☰",
     camera: "▣",
+    video: "▶",
     "mic-circle": "●",
     mic: "●",
     stop: "■",
@@ -64,6 +65,27 @@ function grabadorSiHay() {
   }
 }
 
+const VIDEO_MAX_BYTES = 16 * 1024 * 1024;
+
+function textoSiNoHayNota(nota, hayFoto, hayAudio, hayVideo) {
+  if (nota) return nota;
+  const partes = [hayFoto && "foto", hayAudio && "audio", hayVideo && "video"].filter(Boolean);
+  if (!partes.length) return "";
+  partes[0] = partes[0][0].toUpperCase() + partes[0].slice(1);
+  if (partes.length === 1) return partes[0];
+  const ultima = partes.pop();
+  return `${partes.join(", ")} y ${ultima}`;
+}
+
+function tituloSubida(hayFoto, hayAudio, hayVideo) {
+  const tipos = [hayVideo && "video", hayFoto && "foto", hayAudio && "audio"].filter(Boolean);
+  if (tipos.length > 1) return "Subiendo archivos";
+  if (tipos[0] === "video") return "Subiendo video";
+  if (tipos[0] === "foto") return "Subiendo foto";
+  if (tipos[0] === "audio") return "Subiendo audio";
+  return "Enviando novedad";
+}
+
 function horaBA(value) {
   const fecha = new Date(value);
   if (Number.isNaN(fecha.getTime())) return "—";
@@ -83,9 +105,12 @@ export default function Novedades({ token, onVolver }) {
   const [data, setData] = useState(null);
   const [texto, setTexto] = useState("");
   const [enviando, setEnviando] = useState(false);
+  const [progreso, setProgreso] = useState(0);
+  const [subida, setSubida] = useState("");
   const [escuchando, setEscuchando] = useState(false);
   const [fotos, setFotos] = useState([]);
   const [audioUri, setAudioUri] = useState("");
+  const [video, setVideo] = useState(null);
   const [grabando, setGrabando] = useState(false);
   const baseRef = useRef("");
   const Dictado = dictadoSiHay();
@@ -174,26 +199,77 @@ export default function Novedades({ token, onVolver }) {
     setFotos((prev) => [...prev, { uri: asset.uri, type: "image/jpeg", name: "foto.jpg" }].slice(0, 3));
   };
 
+  const onVideo = async () => {
+    if (!puedeEscribir || enviando || grabando) return;
+    if (video) {
+      setVideo(null);
+      return;
+    }
+    const ImagePicker = picker();
+    if (!ImagePicker) {
+      Alert.alert("Cámara", "El video entra con la próxima compilación de la app.");
+      return;
+    }
+    const permiso = await ImagePicker.requestCameraPermissionsAsync();
+    if (!permiso.granted) {
+      Alert.alert("Cámara", "Hace falta la cámara para grabar un video.");
+      return;
+    }
+    try {
+      const audio = require("expo-audio");
+      if (audio?.requestRecordingPermissionsAsync) await audio.requestRecordingPermissionsAsync();
+    } catch {
+      /* sin micrófono el video puede quedar mudo */
+    }
+    const result = await ImagePicker.launchCameraAsync({
+      mediaTypes: ["videos"],
+      videoMaxDuration: 20,
+      videoQuality: ImagePicker.UIImagePickerControllerQualityType?.Low ?? 2,
+      videoExportPreset: ImagePicker.VideoExportPreset?.LowQuality,
+    });
+    if (result.canceled) return;
+    const asset = result.assets?.[0];
+    if (!asset?.uri) return;
+    if (Number(asset.fileSize) > VIDEO_MAX_BYTES) {
+      Alert.alert("Video", "El video es muy pesado. Grabá uno más corto, hasta 20 segundos.");
+      return;
+    }
+    setVideo({
+      uri: asset.uri,
+      type: asset.mimeType || "video/mp4",
+      name: asset.fileName || "novedad.mp4",
+    });
+  };
+
   const onEnviar = async () => {
     const nota = String(texto || "").trim();
-    if (!nota || enviando) return;
+    const hayFoto = fotos.length > 0;
+    const hayAudio = Boolean(audioUri);
+    const hayVideo = Boolean(video?.uri);
+    if ((!nota && !hayFoto && !hayAudio && !hayVideo) || enviando) return;
     if (escuchando) moduloVoz()?.stop?.();
     if (grabando) {
       Alert.alert("Audio", "Detené la grabación antes de enviar.");
       return;
     }
+    const textoEnvio = textoSiNoHayNota(nota, hayFoto, hayAudio, hayVideo);
     if (!data?.enCurso) {
       Alert.alert("Turno", "El turno no está en curso.");
       return;
     }
+    const hayArchivo = hayFoto || hayAudio || hayVideo;
     setEnviando(true);
+    setProgreso(hayArchivo ? 0 : 0);
+    setSubida(hayArchivo ? tituloSubida(hayFoto, hayAudio, hayVideo) : "");
     try {
       const res = await crearNovedad(token, {
-        texto: nota,
+        texto: textoEnvio,
         at: new Date().toISOString(),
         clientId: `n_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
         fotos,
         audio: audioUri ? { uri: audioUri } : null,
+        video,
+        onProgress: hayArchivo ? setProgreso : undefined,
       });
       const creada = res?.novedad;
       if (creada) {
@@ -205,16 +281,24 @@ export default function Novedades({ token, onVolver }) {
       setTexto("");
       setFotos([]);
       setAudioUri("");
+      setVideo(null);
     } catch (error) {
       Alert.alert("No se guardó", error?.message || "Probá de nuevo.");
     } finally {
       setEnviando(false);
+      setProgreso(0);
+      setSubida("");
     }
   };
 
   const novedades = data?.novedades || [];
   const contenido = { width: "100%", maxWidth: ancho, alignSelf: "center" };
   const letra = Math.max(16, m(16));
+  const puedeEnviar =
+    puedeEscribir &&
+    !enviando &&
+    !grabando &&
+    (Boolean(String(texto || "").trim()) || fotos.length > 0 || Boolean(audioUri) || Boolean(video?.uri));
 
   return (
     <KeyboardAvoidingView style={styles.root}>
@@ -274,6 +358,9 @@ export default function Novedades({ token, onVolver }) {
                     {(item.adjuntos || []).some((adj) => adj.tipo === "audio") ? (
                       <Text style={[styles.audioNota, { fontSize: m(12), marginTop: m(6) }]}>Audio</Text>
                     ) : null}
+                    {(item.adjuntos || []).some((adj) => adj.tipo === "video") ? (
+                      <Text style={[styles.audioNota, { fontSize: m(12), marginTop: m(6) }]}>Video</Text>
+                    ) : null}
                   </View>
                 ))
               )}
@@ -293,6 +380,18 @@ export default function Novedades({ token, onVolver }) {
               >
                 <Icono name="camera" size={m(16)} color="#fff" />
                 <Text style={[styles.chipTexto, { fontSize: m(12) }]}>Foto{fotos.length ? ` ${fotos.length}` : ""}</Text>
+              </Pressable>
+              <Pressable
+                style={[
+                  styles.chip,
+                  { borderRadius: m(12), paddingHorizontal: m(12), paddingVertical: m(8) },
+                  (!puedeEscribir || enviando || grabando) && styles.btnOff,
+                ]}
+                onPress={onVideo}
+                disabled={!puedeEscribir || enviando || grabando}
+              >
+                <Icono name="video" size={m(16)} color="#fff" />
+                <Text style={[styles.chipTexto, { fontSize: m(12) }]}>{video ? "Quitar video" : "Video"}</Text>
               </Pressable>
               {Grabador ? (
                 <Grabador
@@ -314,12 +413,97 @@ export default function Novedades({ token, onVolver }) {
                 </Pressable>
               )}
             </View>
-            {fotos.length || audioUri ? (
+            {enviando && subida ? (
+              <View
+                style={[
+                  contenido,
+                  styles.subidaCard,
+                  {
+                    borderRadius: m(14),
+                    paddingHorizontal: m(14),
+                    paddingVertical: m(14),
+                    marginTop: m(8),
+                  },
+                ]}
+              >
+                <View style={styles.subidaCabeza}>
+                  <ActivityIndicator color="#fff" />
+                  <View style={styles.videoTextoCaja}>
+                    <Text style={[styles.videoTitulo, { fontSize: m(15) }]}>{subida}</Text>
+                    <Text style={[styles.videoSub, { fontSize: m(12), marginTop: m(2) }]}>
+                      {progreso >= 100 ? "Guardando en el servidor…" : `${progreso}% · no cierres la app`}
+                    </Text>
+                  </View>
+                  <Text style={[styles.subidaPct, { fontSize: m(18) }]}>{Math.min(100, progreso)}%</Text>
+                </View>
+                <View style={[styles.subidaPista, { height: m(10), borderRadius: m(999), marginTop: m(12) }]}>
+                  <View
+                    style={[
+                      styles.subidaRelleno,
+                      {
+                        width: `${Math.max(4, Math.min(100, progreso))}%`,
+                        borderRadius: m(999),
+                      },
+                    ]}
+                  />
+                </View>
+              </View>
+            ) : null}
+            {(fotos.length || audioUri || video?.uri) && !enviando ? (
               <View style={[contenido, styles.previas, { marginTop: m(8) }]}>
                 {fotos.map((foto) => (
                   <Image key={foto.uri} source={{ uri: foto.uri }} style={styles.foto} />
                 ))}
-                {audioUri ? <Text style={[styles.audioNota, { fontSize: m(12) }]}>Audio listo</Text> : null}
+                {audioUri ? (
+                  <View
+                    style={[
+                      styles.audioChip,
+                      { borderRadius: m(12), paddingHorizontal: m(12), paddingVertical: m(10) },
+                    ]}
+                  >
+                    <Icono name="mic" size={m(16)} color="#7B61FF" />
+                    <Text style={[styles.audioChipTexto, { fontSize: m(13) }]}>Audio listo</Text>
+                  </View>
+                ) : null}
+                {video?.uri ? (
+                  <Pressable
+                    style={[
+                      styles.videoCard,
+                      {
+                        borderRadius: m(14),
+                        paddingHorizontal: m(12),
+                        paddingVertical: m(12),
+                        minHeight: m(72),
+                      },
+                    ]}
+                    onPress={onVideo}
+                    disabled={!puedeEscribir || enviando || grabando}
+                    accessibilityLabel="Quitar video"
+                  >
+                    <View
+                      style={[
+                        styles.videoPlay,
+                        { width: m(44), height: m(44), borderRadius: m(22) },
+                      ]}
+                    >
+                      <Icono name="video" size={m(20)} color="#fff" />
+                    </View>
+                    <View style={styles.videoTextoCaja}>
+                      <Text style={[styles.videoTitulo, { fontSize: m(15) }]}>Video listo</Text>
+                      <Text style={[styles.videoSub, { fontSize: m(12), marginTop: m(2) }]}>
+                        Tocá Enviar o acá para quitarlo
+                      </Text>
+                    </View>
+                    <View
+                      style={[
+                        styles.videoQuitar,
+                        { width: m(32), height: m(32), borderRadius: m(16) },
+                      ]}
+                    >
+                      <Text style={{ color: "#fff", fontSize: m(18), fontWeight: "800", lineHeight: m(20) }}>×</Text>
+                    </View>
+                  </Pressable>
+                ) : null}
               </View>
             ) : null}
             <View style={[contenido, styles.composer, { marginTop: m(8) }]}>
@@ -362,12 +546,21 @@ export default function Novedades({ token, onVolver }) {
                 style={[
                   styles.btn,
                   { borderRadius: m(12), paddingHorizontal: m(16), paddingVertical: m(12) },
-                  (!puedeEscribir || !texto.trim() || enviando) && styles.btnOff,
+                  !puedeEnviar && styles.btnOff,
+                  puedeEnviar && video?.uri && styles.btnVideo,
                 ]}
                 onPress={onEnviar}
-                disabled={!puedeEscribir || !texto.trim() || enviando}
+                disabled={!puedeEnviar}
               >
-                <Text style={[styles.btnTexto, { fontSize: m(14) }]}>{enviando ? "..." : "Enviar"}</Text>
+                <Text style={[styles.btnTexto, { fontSize: m(14) }]}>
+                  {enviando
+                    ? progreso > 0 && progreso < 100
+                      ? `${progreso}%`
+                      : "..."
+                    : video?.uri && !String(texto || "").trim() && !fotos.length && !audioUri
+                      ? "Enviar video"
+                      : "Enviar"}
+                </Text>
               </Pressable>
             </View>
           </View>
@@ -391,10 +584,19 @@ const styles = StyleSheet.create({
   fotos: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
   foto: { width: 64, height: 64, borderRadius: 8, backgroundColor: "#E8ECF1" },
   audioNota: { fontWeight: "700", color: "#7B61FF" },
+  audioChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    backgroundColor: "#EDE9FE",
+    borderWidth: 1,
+    borderColor: "#C4B5FD",
+  },
+  audioChipTexto: { color: "#5B21B6", fontWeight: "800" },
   empty: { alignItems: "center" },
   emptyTitulo: { fontWeight: "700", color: "#1A2332" },
   emptySub: { color: "#6B7280", textAlign: "center" },
-  adjuntos: { flexDirection: "row", gap: 8 },
+  adjuntos: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
   chip: {
     flexDirection: "row",
     alignItems: "center",
@@ -402,7 +604,52 @@ const styles = StyleSheet.create({
     backgroundColor: "#7B61FF",
   },
   chipTexto: { color: "#fff", fontWeight: "700" },
-  previas: { flexDirection: "row", alignItems: "center", gap: 8 },
+  previas: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 8 },
+  videoCard: {
+    flexGrow: 1,
+    flexBasis: "100%",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    backgroundColor: "#4C1D95",
+    borderWidth: 2,
+    borderColor: "#A78BFA",
+  },
+  videoPlay: {
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#7B61FF",
+  },
+  videoTextoCaja: { flex: 1, minWidth: 0 },
+  videoTitulo: { color: "#FFFFFF", fontWeight: "800" },
+  videoSub: { color: "#DDD6FE", fontWeight: "600" },
+  videoQuitar: {
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(255,255,255,0.2)",
+  },
+  subidaCard: {
+    backgroundColor: "#4C1D95",
+    borderWidth: 2,
+    borderColor: "#C4B5FD",
+  },
+  subidaCabeza: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
+  subidaPct: {
+    color: "#F5F3FF",
+    fontWeight: "900",
+  },
+  subidaPista: {
+    overflow: "hidden",
+    backgroundColor: "rgba(255,255,255,0.22)",
+  },
+  subidaRelleno: {
+    height: "100%",
+    backgroundColor: "#A78BFA",
+  },
   composer: { flexDirection: "row", alignItems: "flex-end", gap: 8 },
   input: {
     flex: 1,
@@ -414,6 +661,7 @@ const styles = StyleSheet.create({
   mic: { backgroundColor: "#7B61FF", alignItems: "center", justifyContent: "center" },
   micOn: { backgroundColor: "#DC2626" },
   btn: { backgroundColor: "#7B61FF" },
+  btnVideo: { backgroundColor: "#5B21B6" },
   btnOff: { backgroundColor: "#94A3B8" },
   btnTexto: { color: "#fff", fontWeight: "800" },
 });

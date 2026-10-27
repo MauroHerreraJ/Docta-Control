@@ -54,15 +54,16 @@ export default function Login({ onIngresar }) {
     let vivo = true;
     const leerEmpresa = async () => {
       try {
+        const id = await idDeEsteCelular();
+        if (vivo) setCodigo(id || "");
         const nombre = await empresaDeEsteCelular();
-        if (vivo) setEmpresa(nombre);
+        if (!vivo) return;
+        setEmpresa(nombre);
+        if (nombre) setError("");
       } catch {
         /* sin respuesta se sigue mostrando el código */
       }
     };
-    idDeEsteCelular().then((id) => {
-      if (vivo) setCodigo(id || "");
-    });
     leerEmpresa();
     const timer = setInterval(leerEmpresa, 8000);
     estadoBiometria().then((estado) => {
