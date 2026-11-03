@@ -156,24 +156,33 @@ export default function Novedades({ token, onVolver }) {
       return;
     }
     if (escuchando) {
-      modulo.stop();
+      try {
+        modulo.stop();
+      } catch {
+        setEscuchando(false);
+      }
       return;
     }
     try {
+      if (typeof modulo.isRecognitionAvailable === "function" && !modulo.isRecognitionAvailable()) {
+        Alert.alert("Dictado", "Este dispositivo no tiene reconocimiento de voz disponible.");
+        return;
+      }
       const perm = await modulo.requestPermissionsAsync();
       if (!perm.granted) {
         Alert.alert("Micrófono", "Hace falta el micrófono para dictar la novedad.");
         return;
       }
       baseRef.current = String(texto || "").trim();
+      setEscuchando(true);
       modulo.start({
         lang: "es-AR",
         interimResults: true,
         continuous: false,
       });
-    } catch {
+    } catch (error) {
       setEscuchando(false);
-      Alert.alert("Dictado", "El reconocimiento de voz entra con la próxima compilación de la app.");
+      Alert.alert("Dictado", error?.message || "No se pudo iniciar el dictado. Probá de nuevo.");
     }
   };
 
