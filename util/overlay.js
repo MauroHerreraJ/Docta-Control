@@ -1,4 +1,4 @@
-import { NativeModules, Platform, Vibration } from "react-native";
+import { NativeModules, Platform } from "react-native";
 
 const nativo = NativeModules.DoctaOverlay;
 
@@ -13,17 +13,32 @@ export function pedirSobreOtrasApps() {
   nativo.abrirAjustes();
 }
 
-/** Suena la alarma del teléfono mientras el cartel está abierto. */
+/** Android 14+: permiso de notificación a pantalla completa. */
+export async function puedePantallaCompleta() {
+  if (Platform.OS !== "android") return false;
+  if (!nativo?.puedePantallaCompleta) return true;
+  return Boolean(await nativo.puedePantallaCompleta().catch(() => false));
+}
+
+export function pedirPantallaCompleta() {
+  if (Platform.OS !== "android" || !nativo?.pedirPantallaCompleta) return;
+  nativo.pedirPantallaCompleta();
+}
+
+/**
+ * Alarma continua nativa (Foreground Service + WakeLock + MediaPlayer).
+ * No usa setInterval de JS: sigue con la pantalla apagada.
+ */
 export function sonarAlarma() {
-  if (Platform.OS !== "android") return;
-  if (nativo?.sonar) {
+  if (Platform.OS === "android" && nativo?.sonar) {
     nativo.sonar();
-    return;
   }
-  Vibration.vibrate([0, 800, 150, 800, 150, 1200], true);
 }
 
 export function callarAlarma() {
   if (nativo?.callar) nativo.callar();
-  Vibration.cancel();
+}
+
+export function cancelarNotificacionAviso() {
+  if (nativo?.cancelarAviso) nativo.cancelarAviso();
 }

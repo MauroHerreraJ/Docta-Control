@@ -11,7 +11,22 @@ import {
   View,
 } from "react-native";
 import { pedirSinAhorro, pedirUbicacionTodoElTiempo } from "../util/fondo";
-import { pedirSobreOtrasApps, puedeSobreOtrasApps } from "../util/overlay";
+import {
+  pedirPantallaCompleta,
+  pedirSobreOtrasApps,
+  puedePantallaCompleta,
+  puedeSobreOtrasApps,
+} from "../util/overlay";
+import {
+  DURACIONES_SEG,
+  DEFAULT_ALARMA,
+  INTENSIDADES,
+  TIPOS_SONIDO,
+  cargarAlarmaConfig,
+  detenerPruebaAlarma,
+  guardarAlarmaConfig,
+  probarAlarma,
+} from "../util/alarmaConfig";
 import { escucharPush } from "../util/push";
 import BotonVolver from "./BotonVolver";
 import { cambiarClave, nombreDe } from "../util/sesion";
@@ -55,6 +70,7 @@ function Tecnica({ usuario, onSalir, saliendo, enFondo, diag, onVolver }) {
   const latido = diag?.latidoSeg || 60;
   const [push, setPush] = useState(null);
   const [sobreApps, setSobreApps] = useState(false);
+  const [pantallaCompleta, setPantallaCompleta] = useState(false);
 
   useEffect(() => escucharPush(setPush), []);
 
@@ -63,6 +79,9 @@ function Tecnica({ usuario, onSalir, saliendo, enFondo, diag, onVolver }) {
     const leer = () => {
       puedeSobreOtrasApps().then((ok) => {
         if (vivo) setSobreApps(ok);
+      });
+      puedePantallaCompleta().then((ok) => {
+        if (vivo) setPantallaCompleta(ok);
       });
     };
     leer();
@@ -113,6 +132,14 @@ function Tecnica({ usuario, onSalir, saliendo, enFondo, diag, onVolver }) {
         {diag?.ultimoError ? <Text style={styles.error}>{diag.ultimoError}</Text> : null}
         {diag?.nota ? <Text style={styles.linea}>{diag.nota}</Text> : null}
         <Text style={styles.linea}>
+          {pantallaCompleta
+            ? "Pantalla completa de aviso permitida."
+            : "Sin pantalla completa el aviso puede quedar solo como notificación."}
+        </Text>
+        <Pressable style={styles.extra} onPress={() => pedirPantallaCompleta()}>
+          <Text style={styles.extraTexto}>Permitir pantalla completa</Text>
+        </Pressable>
+        <Text style={styles.linea}>
           {sobreApps
             ? "Puede mostrarse sobre otras apps."
             : "Sin «Mostrar sobre otras apps» el push no abre la pantalla si está minimizada."}
@@ -145,6 +172,25 @@ export default function Configuracion({ usuario, onSalir, saliendo, enFondo, dia
   const [inicioAbierto, setInicioAbierto] = useState(false);
   const [claveInicio, setClaveInicio] = useState("");
   const [iniciando, setIniciando] = useState(false);
+  const [alarma, setAlarma] = useState(DEFAULT_ALARMA);
+  const [probando, setProbando] = useState(false);
+
+  useEffect(() => {
+    cargarAlarmaConfig().then(setAlarma).catch(() => {});
+    return () => detenerPruebaAlarma();
+  }, []);
+
+  const aplicarAlarma = async (parcial) => {
+    const next = await guardarAlarmaConfig({ ...alarma, ...parcial });
+    setAlarma(next);
+    return next;
+  };
+
+  const ciclo = (lista, actualId) => {
+    const i = lista.findIndex((x) => x === actualId || x.id === actualId);
+    const next = lista[(i + 1) % lista.length];
+    return typeof next === "object" ? next.id : next;
+  };
 
   const guardar = async () => {
     const claveActual = actual.trim();
@@ -326,6 +372,68 @@ export default function Configuracion({ usuario, onSalir, saliendo, enFondo, dia
               <Text style={styles.extraTexto}>{inicioAbierto ? "Borrar e iniciar" : "Iniciar"}</Text>
             )}
           </Pressable>
+          <Text style={styles.seccion}>Alarma del aviso</Text>
+          <Text style={styles.detalle}>
+            El volumen de las notificaciones del sistema también depende de los controles de Android.
+          </Text>
+
+          <Text style={styles.etiqueta}>Volumen de alarma: {alarma.volumen}%</Text>
+          <View style={styles.fila}>
+            <Pressable
+              style={[styles.chip, styles.chipMitad]}
+              onPress={() => aplicarAlarma({ volumen: Math.max(0, alarma.volumen - 10) })}
+            >
+              <Text style={styles.extraTexto}>- 10</Text>
+            </Pressable>
+            <Pressable
+              style={[styles.chip, styles.chipMitad]}
+              onPress={() => aplicarAlarma({ volumen: Math.min(100, alarma.volumen + 10) })}
+            >
+              <Text style={styles.extraTexto}>+ 10</Text>
+            </Pressable>
+          </View>
+
+          <Pressable
+            style={styles.extra}
+            onPress={() => aplicarAlarma({ tipo: ciclo(TIPOS_SONIDO, alarma.tipo) })}
+          >
+            <Text style={styles.extraTexto}>
+              Tipo de sonido: {TIPOS_SONIDO.find((t) => t.id === alarma.tipo)?.etiqueta || "Alarma"}
+            </Text>
+          </Pressable>
+
+          <Pressable
+            style={styles.extra}
+            onPress={() => aplicarAlarma({ repeticionSeg: ciclo(DURACIONES_SEG, alarma.repeticionSeg) })}
+          >
+            <Text style={styles.extraTexto}>Duración de repetición: {alarma.repeticionSeg} s</Text>
+          </Pressable>
+
+          <Pressable
+            style={styles.extra}
+            onPress={() => aplicarAlarma({ vibracion: ciclo(INTENSIDADES, alarma.vibracion) })}
+          >
+            <Text style={styles.extraTexto}>
+              Intensidad de vibración:{" "}
+              {INTENSIDADES.find((i) => i.id === alarma.vibracion)?.etiqueta || "Alta"}
+            </Text>
+          </Pressable>
+
+          <Pressable
+            style={[styles.extra, probando && styles.botonOff]}
+            onPress={() => {
+              if (probando) {
+                detenerPruebaAlarma();
+                setProbando(false);
+                return;
+              }
+              setProbando(true);
+              probarAlarma();
+              setTimeout(() => setProbando(false), 3500);
+            }}
+          >
+            <Text style={styles.extraTexto}>{probando ? "Detener prueba" : "Probar sonido"}</Text>
+          </Pressable>
         </View>
       </ScrollView>
     </ImageBackground>
@@ -444,6 +552,29 @@ const styles = StyleSheet.create({
     color: "#FFFFFF",
     fontSize: 14,
     fontWeight: "700",
+  },
+  seccion: {
+    marginTop: 22,
+    color: "#1A2B3C",
+    fontSize: 16,
+    fontWeight: "800",
+  },
+  fila: {
+    marginTop: 10,
+    flexDirection: "row",
+    gap: 10,
+  },
+  chip: {
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: "#8FB8EF",
+    backgroundColor: "rgba(58, 113, 183, 0.45)",
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    alignItems: "center",
+  },
+  chipMitad: {
+    flex: 1,
   },
   etiqueta: {
     marginTop: 16,

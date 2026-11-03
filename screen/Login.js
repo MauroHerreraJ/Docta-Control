@@ -321,7 +321,7 @@ const styles = StyleSheet.create({
   },
   leyenda: {
     marginBottom: 12,
-    color: "#0F76C4",
+    color: "#9CCBEA",
     fontSize: 13,
     fontWeight: "600",
   },

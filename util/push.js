@@ -3,18 +3,47 @@ import * as Notifications from "expo-notifications";
 import * as TaskManager from "expo-task-manager";
 import { DeviceEventEmitter, Linking, Platform } from "react-native";
 import { despertarConsulta, ordenCerrarApp } from "./fondo";
-import { callarAlarma, sonarAlarma } from "./overlay";
+import { cargarAlarmaConfig, leerAlarmaConfig, patronVibracion } from "./alarmaConfig";
+import { callarAlarma, cancelarNotificacionAviso, sonarAlarma } from "./overlay";
 import { informarHombreVivo, reconocerPush, registrarTokenPush, restaurarSesion } from "./sesion";
 
 export const TAREA_PUSH = "docta5-push";
-const CANAL_AVISO = "aviso-alarma";
+/** Canal v2: MAX, lockscreen, vibración. Nuevo id = Android aplica config nueva. */
+const CANAL_AVISO = "aviso-alarma-v2";
 
-const estado = { listo: false, error: "" };
+const estado = { listo: false, error: "", sonido: "default" };
 const oyentes = new Set();
 const avisoOyentes = new Set();
 let aviso = { abierto: false, id: 0, hasta: 0, tipo: "", clientId: "", programaId: "" };
 const reportados = new Set();
-const AVISO_MS = 10 * 1000;
+/** Eventos ya reconocidos/cerrados: no se vuelven a abrir por sticky ni al volver a la app. */
+const resueltos = new Set();
+let bloqueoSinIdTipo = "";
+let bloqueoSinIdHasta = 0;
+let notifLocalId = null;
+
+/** Espera "Acá estoy". Tope de seguridad 30 s. */
+const AVISO_HASTA_ACK = true;
+const AVISO_SEGURIDAD_MS = 30 * 1000;
+
+function marcarResuelto(datos) {
+  const tipo = String(datos?.tipo || "");
+  const id = String(datos?.clientId || "").trim();
+  if (id) {
+    resueltos.add(`${tipo}:${id}`);
+    return;
+  }
+  // aviso-panel no trae id: bloquear reapertura sticky un rato.
+  bloqueoSinIdTipo = tipo;
+  bloqueoSinIdHasta = Date.now() + 60 * 1000;
+}
+
+function yaResuelto(datos) {
+  const tipo = String(datos?.tipo || "");
+  const id = String(datos?.clientId || "").trim();
+  if (id) return resueltos.has(`${tipo}:${id}`);
+  return Boolean(tipo && tipo === bloqueoSinIdTipo && Date.now() < bloqueoSinIdHasta);
+}
 
 function publicar(parcial) {
   Object.assign(estado, parcial);
@@ -43,10 +72,23 @@ export function escucharAviso(fn) {
   return () => avisoOyentes.delete(fn);
 }
 
+function detenerAlarmaCritica() {
+  // La repetición es nativa (WakeLock + MediaPlayer). JS solo ordena callar.
+  callarAlarma();
+}
+
+function iniciarAlarmaCritica() {
+  detenerAlarmaCritica();
+  const cfg = leerAlarmaConfig();
+  estado.sonido = cfg.tipo === "none" ? "none" : "default";
+  // Una sola llamada: el servicio nativo mantiene sonido/vibración con pantalla apagada.
+  sonarAlarma();
+}
+
 export function cerrarAviso() {
   if (!aviso.abierto) return;
   aviso = { ...aviso, abierto: false, hasta: 0 };
-  callarAlarma();
+  detenerAlarmaCritica();
   emitirAviso();
 }
 
@@ -71,15 +113,23 @@ async function puntoRapido() {
 }
 
 function cerrarPushEnBandeja() {
+  const id = notifLocalId;
+  notifLocalId = null;
+  if (id) {
+    Notifications.dismissNotificationAsync(id).catch(() => {});
+    Notifications.cancelScheduledNotificationAsync(id).catch(() => {});
+  }
+  cancelarNotificacionAviso();
   Notifications.dismissAllNotificationsAsync?.().catch(() => {});
 }
 
-/** Acá estoy queda cumplido y el panel cierra el aviso. Si el cartel se cierra solo, queda no cumplido. */
+/** Acá estoy = cumplido. El evento no se reabre. */
 export function resolverAviso(cumplio) {
   const actual = { ...aviso };
   if (!actual.abierto) return;
+  marcarResuelto(actual);
   cerrarAviso();
-  if (cumplio) cerrarPushEnBandeja();
+  cerrarPushEnBandeja();
   const clientId = String(actual.clientId || "");
   const esHombre = actual.tipo === "hombre_vivo";
   if (esHombre && clientId && reportados.has(clientId)) return;
@@ -117,26 +167,33 @@ function tipoVisible(tipo) {
 
 function datosDe(origen) {
   const content = origen?.request?.content || origen?.notification?.request?.content;
-  const data = content?.data || origen?.data || origen || {};
+  let data = content?.data || origen?.data || origen || {};
+  const crudo = data?.dataString;
+  if (typeof crudo === "string" && crudo.trim()) {
+    try {
+      data = { ...data, ...JSON.parse(crudo) };
+    } catch {
+      /* sigue */
+    }
+  }
   return {
     tipo: String(data?.tipo || ""),
     clientId: String(data?.id || data?.clientId || ""),
     programaId: String(data?.programaId || ""),
+    title: String(data?.title || content?.title || "DoctaControl"),
+    message: String(data?.message || content?.body || "Confirmá que estás en el puesto."),
   };
 }
 
-/** El push visible abre el cartel. Se cierra a los 10 s de haber llegado. */
-function abrirAviso(notification) {
-  const datos = datosDe(notification);
+/** Nivel 1: el cartel queda hasta Acá estoy (o tope de seguridad). */
+function abrirCartel(datos, _cuando) {
   if (!tipoVisible(datos.tipo)) return;
-  const cuando = fechaDe(notification) || Date.now();
-  abrirCartel(datos, cuando);
-}
-
-function abrirCartel(datos, cuando) {
-  const hasta = cuando + AVISO_MS;
-  if (Date.now() >= hasta) return;
-  if (aviso.abierto && aviso.clientId && aviso.clientId === datos.clientId) return;
+  if (yaResuelto(datos)) return;
+  const hasta = AVISO_HASTA_ACK ? Date.now() + AVISO_SEGURIDAD_MS : Date.now() + 10 * 1000;
+  if (aviso.abierto && aviso.clientId && aviso.clientId === datos.clientId) {
+    iniciarAlarmaCritica();
+    return;
+  }
   if (aviso.abierto && aviso.clientId && !datos.clientId) return;
   if (
     aviso.abierto &&
@@ -147,6 +204,7 @@ function abrirCartel(datos, cuando) {
   ) {
     resolverAviso(false);
   }
+  if (yaResuelto(datos)) return;
   aviso = {
     abierto: true,
     id: aviso.id + 1,
@@ -155,8 +213,49 @@ function abrirCartel(datos, cuando) {
     clientId: datos.clientId,
     programaId: datos.programaId,
   };
-  sonarAlarma();
+  iniciarAlarmaCritica();
   emitirAviso();
+  mostrarNotificacionCritica(datos).catch(() => {});
+}
+
+async function mostrarNotificacionCritica(datos) {
+  if (Platform.OS !== "android") return;
+  if (yaResuelto(datos)) return;
+  if (notifLocalId) {
+    await Notifications.dismissNotificationAsync(notifLocalId).catch(() => {});
+    await Notifications.cancelScheduledNotificationAsync(notifLocalId).catch(() => {});
+    notifLocalId = null;
+  }
+  notifLocalId = await Notifications.scheduleNotificationAsync({
+    content: {
+      title: datos.title || "DoctaControl",
+      body: datos.message || "ACÁ ESTOY",
+      sound: leerAlarmaConfig().tipo === "none" ? false : "default",
+      priority: Notifications.AndroidNotificationPriority.MAX,
+      sticky: true,
+      autoDismiss: false,
+      data: {
+        tipo: datos.tipo,
+        id: datos.clientId,
+        programaId: datos.programaId,
+        channelId: CANAL_AVISO,
+      },
+      ...(Platform.OS === "android"
+        ? {
+            channelId: CANAL_AVISO,
+            vibrate: patronVibracion(leerAlarmaConfig().vibracion) || [0],
+          }
+        : {}),
+    },
+    trigger: null,
+  });
+}
+
+/** El push visible abre el cartel. Ya no caduca a los 10 s de llegada. */
+function abrirAviso(notification) {
+  const datos = datosDe(notification);
+  if (!tipoVisible(datos.tipo)) return;
+  abrirCartel(datos, fechaDe(notification) || Date.now());
 }
 
 function datosDeUrl(url) {
@@ -173,6 +272,8 @@ function datosDeUrl(url) {
     tipo: params.tipo || "hombre_vivo",
     clientId: params.id || "",
     programaId: params.programaId || "",
+    title: "Hombre vivo",
+    message: "Confirmá que estás en el puesto.",
   };
 }
 
@@ -192,7 +293,17 @@ DeviceEventEmitter.addListener("avisoEnPantalla", (evento) => {
 
 export async function revisarAvisoAlVolver() {
   const ultima = await Notifications.getLastNotificationResponseAsync().catch(() => null);
-  if (ultima?.notification) abrirAviso(ultima.notification);
+  if (ultima?.notification) {
+    const datos = datosDe(ultima.notification);
+    if (tipoVisible(datos.tipo) && !yaResuelto(datos)) abrirAviso(ultima.notification);
+  }
+  const presentadas = await Notifications.getPresentedNotificationsAsync().catch(() => []);
+  for (const n of presentadas || []) {
+    const datos = datosDe(n);
+    if (!tipoVisible(datos.tipo) || yaResuelto(datos)) continue;
+    abrirCartel(datos, Date.now());
+    break;
+  }
 }
 
 function tipoDe(data) {
@@ -204,16 +315,21 @@ function tipoDe(data) {
       /* sigue con el objeto */
     }
   }
-  const aviso = data?.data || data?.notification?.data || data || {};
-  return String(aviso?.tipo || "");
+  const avisoData = data?.data || data?.notification?.data || data || {};
+  return String(avisoData?.tipo || "");
 }
 
 TaskManager.defineTask(TAREA_PUSH, async ({ data }) => {
-  if (tipoDe(data) === "cerrar-app") {
+  const tipo = tipoDe(data);
+  if (tipo === "cerrar-app") {
     ordenCerrarApp();
     return;
   }
-  if (tipoDe(data) !== "keepalive") return;
+  if (tipo === "hombre_vivo" || tipo === "aviso-panel") {
+    DeviceEventEmitter.emit("avisoEnPantalla", data?.data || data);
+    return;
+  }
+  if (tipo !== "keepalive") return;
   await despertarConsulta();
 });
 
@@ -226,35 +342,56 @@ function asegurarTarea() {
 asegurarTarea();
 
 Notifications.setNotificationHandler({
-  handleNotification: async (aviso) => {
-    const tipo = String(aviso?.request?.content?.data?.tipo || "");
+  handleNotification: async (avisoNotif) => {
+    const tipo = String(avisoNotif?.request?.content?.data?.tipo || "");
     const visible = tipo === "hombre_vivo" || tipo === "aviso-panel";
     return {
-      shouldShowAlert: false,
-      shouldShowBanner: false,
-      shouldShowList: false,
-      shouldPlaySound: visible,
+      // Nivel 1: visible en pantalla bloqueada / bandeja.
+      shouldShowBanner: visible,
+      shouldShowList: visible,
+      shouldPlaySound: visible && leerAlarmaConfig().tipo !== "none",
       shouldSetBadge: false,
+      priority: Notifications.AndroidNotificationPriority.MAX,
     };
   },
 });
 
+/** Compat: tipo none | default según config Nivel 3. */
+export async function sonidoAlarmaActual() {
+  const cfg = await cargarAlarmaConfig();
+  const valor = cfg.tipo === "none" ? "none" : "default";
+  estado.sonido = valor;
+  return valor;
+}
+
+/** Compat: "default" | "none". */
+export async function guardarSonidoAlarma(valor) {
+  const { guardarAlarmaConfig } = await import("./alarmaConfig");
+  const cfg = await guardarAlarmaConfig({ tipo: valor === "none" ? "none" : "alarm" });
+  const limpio = cfg.tipo === "none" ? "none" : "default";
+  estado.sonido = limpio;
+  publicar({ sonido: limpio });
+  await prepararCanal();
+  return limpio;
+}
+
 async function prepararCanal() {
   if (Platform.OS !== "android") return;
+  const cfg = leerAlarmaConfig();
+  const patron = patronVibracion(cfg.vibracion) || [0, 700, 180, 700, 180, 1100];
+
   await Notifications.setNotificationChannelAsync(CANAL_AVISO, {
-    name: "Avisos del panel",
+    name: "Avisos críticos DoctaControl",
+    description: "Alertas de Hombre Vivo y avisos del panel",
     importance: Notifications.AndroidImportance.MAX,
-    enableVibrate: true,
-    vibrationPattern: [0, 700, 180, 700, 180, 1100],
+    enableVibrate: cfg.vibracion !== "off",
+    vibrationPattern: patron,
     lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
     audioAttributes: {
       usage: Notifications.AndroidAudioUsage.ALARM,
       contentType: Notifications.AndroidAudioContentType.SONIFICATION,
-      flags: {
-        enforceAudibility: true,
-        requestHardwareAudioVideoSynchronization: false,
-      },
     },
+    // No colocar sound: "default"
   }).catch(() => {});
 }
 
@@ -273,6 +410,7 @@ function textoDe(err) {
 export function olvidarPush() {
   sesionPush = "";
   tokenGuardado = "";
+  detenerAlarmaCritica();
   publicar({ listo: false, error: "" });
 }
 
@@ -283,6 +421,7 @@ export async function activarPush(tokenSesion) {
   const sesionNueva = sesionPush !== sesion;
   sesionPush = sesion;
   await asegurarTarea();
+  await cargarAlarmaConfig().catch(() => {});
   await prepararCanal();
   const actual = await Notifications.getPermissionsAsync();
   if (actual.status !== "granted") {

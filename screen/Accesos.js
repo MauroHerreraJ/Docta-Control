@@ -127,7 +127,7 @@ export default function Accesos({ token, onVolver }) {
 
   return (
     <KeyboardAvoidingView style={styles.root}>
-      <Text style={[styles.marca, { fontSize: m(18), marginTop: m(12) }]}>Vigilantes</Text>
+      <Text style={[styles.marca, { fontSize: m(18), marginTop: m(12) }]}>DoctaControl</Text>
       <View style={[styles.cabeza, { paddingHorizontal: m(16), marginTop: m(6) }]}>
         <BotonVolver m={m} titulo="Accesos" onPress={onVolver} />
       </View>

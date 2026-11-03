@@ -112,11 +112,17 @@ function RecorridoMap({ puntos, marcas, pos, mostrarVos, alto }) {
         <WebView
           ref={webRef}
           originWhitelist={["*"]}
-          source={{ html, baseUrl: "https://localhost" }}
+          source={{ html, baseUrl: "https://doctacontrol.app/" }}
           style={styles.web}
           javaScriptEnabled
+          domStorageEnabled
+          mixedContentMode="always"
           setSupportMultipleWindows={false}
+          applicationNameForUserAgent="DoctaControl/1.1"
           onLoadEnd={() => {
+            webRef.current?.injectJavaScript(
+              "setTimeout(function(){ if (window.map && window.map.invalidateSize) window.map.invalidateSize(); }, 80); true;",
+            );
             if (mostrarVos && pos && Number.isFinite(pos.lat) && Number.isFinite(pos.lng)) {
               webRef.current?.injectJavaScript(
                 `window.setUser && window.setUser(${Number(pos.lat)}, ${Number(pos.lng)}); true;`,
@@ -556,7 +562,7 @@ export default function RondaRecorrido({ token, rondaId, onVolver }) {
 
   return (
     <View style={styles.root}>
-      <Text style={[styles.marca, { fontSize: m(18), marginTop: m(12) }]}>Vigilantes</Text>
+      <Text style={[styles.marca, { fontSize: m(18), marginTop: m(12) }]}>DoctaControl</Text>
       <View style={[styles.cabeza, { paddingHorizontal: m(16), marginTop: m(6) }]}>
         <BotonVolver m={m} titulo={vista?.nombre || "Ronda"} onPress={onVolver} />
       </View>

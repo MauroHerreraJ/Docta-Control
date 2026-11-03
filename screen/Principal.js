@@ -302,6 +302,7 @@ export default function Principal({
   const [accesosHoy, setAccesosHoy] = useState(null);
   const [novedadesCount, setNovedadesCount] = useState(null);
   const [turno, setTurno] = useState(null);
+  const [turnoListo, setTurnoListo] = useState(false);
 
   useEffect(() => {
     const token = usuario?.token;
@@ -340,8 +341,13 @@ export default function Principal({
         .then((data) => {
           if (!vivo) return;
           setTurno(data?.activa || null);
+          setTurnoListo(true);
         })
-        .catch(() => {});
+        .catch(() => {
+          if (!vivo) return;
+          setTurno(null);
+          setTurnoListo(true);
+        });
       perfilDelVigilador(token)
         .then((data) => {
           if (!vivo || !data) return;
@@ -390,6 +396,7 @@ export default function Principal({
     return null;
   };
   const ficha = turno ? textoTurno(turno) : null;
+  const sinTurno = turnoListo && !ficha;
   return (
     <ImageBackground
       source={require("../assets/ondas-fondo.png")}
@@ -447,17 +454,21 @@ export default function Principal({
           </View>
           <View style={styles.objetivoTexto}>
             <Text style={styles.objetivoNombre} numberOfLines={1}>
-              {ficha ? ficha.nombre : "…"}
+              {ficha ? ficha.nombre : sinTurno ? "Sin turno asignado" : "…"}
             </Text>
             <View style={styles.horaFila}>
               <View style={styles.relojMini}>
                 <Icono nombre="reloj" color="#8B93A7" />
               </View>
-              <Text style={styles.objetivoHora}>{ficha ? ficha.horario : "…"}</Text>
+              <Text style={styles.objetivoHora}>
+                {ficha ? ficha.horario : sinTurno ? "Sin horario" : "…"}
+              </Text>
             </View>
           </View>
           <View style={styles.programado}>
-            <Text style={styles.programadoTexto}>{ficha ? ficha.estado : ""}</Text>
+            <Text style={styles.programadoTexto}>
+              {ficha ? ficha.estado : sinTurno ? "SIN TURNO" : ""}
+            </Text>
           </View>
         </View>
 

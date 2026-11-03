@@ -25,6 +25,7 @@ export function buildRondaMapHtml(puntos = [], marcas = []) {
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+  <meta name="referrer" content="strict-origin-when-cross-origin" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <style>
     html, body, #map { height: 100%; margin: 0; background: #e2e8f0; }
@@ -40,9 +41,12 @@ export function buildRondaMapHtml(puntos = [], marcas = []) {
     const hechos = new Set(${safeJson(hechos)});
     const pendientes = new Set(${safeJson(pendientes)});
     const map = L.map('map', { zoomControl: false, attributionControl: true });
+    window.map = map;
+    // Mismo plano que Tracker / panel. El WebView manda User-Agent de la app.
     L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
       maxZoom: 19,
-      attribution: '&copy; OpenStreetMap'
+      attribution: '&copy; OpenStreetMap',
+      referrerPolicy: 'strict-origin-when-cross-origin'
     }).addTo(map);
 
     function colorDe(id) {

@@ -2,7 +2,7 @@
   "expo": {
     "name": "Docta",
     "slug": "5_DoctaControl",
-    "version": "1.1.0",
+    "version": "2.0.0",
     "orientation": "portrait",
     "icon": "./assets/doctaoscuro.png",
     "userInterfaceStyle": "light",
@@ -45,7 +45,9 @@
         "android.permission.USE_FINGERPRINT",
         "android.permission.RECORD_AUDIO",
         "android.permission.MODIFY_AUDIO_SETTINGS",
-        "android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK"
+        "android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK",
+        "android.permission.USE_FULL_SCREEN_INTENT",
+        "android.permission.SYSTEM_ALERT_WINDOW"
       ]
     },
     "plugins": [
@@ -62,7 +64,7 @@
       [
         "expo-notifications",
         {
-          "defaultChannel": "aviso-panel"
+          "defaultChannel": "aviso-alarma-v2"
         }
       ],
       [
@@ -89,7 +91,8 @@
         }
       ],
       "expo-speech-recognition",
-      "expo-asset"
+      "expo-asset",
+      "./plugins/withDoctaOverlay.js"
     ],
     "web": {
       "favicon": "./assets/doctaoscuro.png"

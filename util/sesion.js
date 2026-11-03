@@ -34,11 +34,15 @@ function entero(max) {
   return Math.floor(Math.random() * max);
 }
 
-/** 6 dígitos hexadecimales. Los códigos ya guardados no se regeneran. */
+/** 6 hex mayúsculas, como en el panel (ej. 453A18). */
 function codigoNuevo() {
   let codigo = "";
   for (let i = 0; i < 6; i += 1) codigo += HEX[entero(16)];
   return codigo;
+}
+
+function esCodigoCorto(valor) {
+  return /^[0-9A-F]{6}$/.test(String(valor || ""));
 }
 
 async function codigoEstaLibre(codigo) {
@@ -60,18 +64,16 @@ async function codigoEstaLibre(codigo) {
 }
 
 function codigoDe(valor) {
-  return String(valor || "").replace(/^5-doctacontrol:/, "").trim();
+  return String(valor || "")
+    .replace(/^5-doctacontrol:/, "")
+    .trim()
+    .toUpperCase();
 }
 
 /** Una sola generación aunque la pantalla y el login lo pidan juntos. */
 let idDeEsteCelularPendiente = null;
 
-async function resolverIdDeEsteCelular() {
-  const guardado = codigoDe(await AsyncStorage.getItem(CLAVE_DEVICE).catch(() => ""));
-  if (guardado) {
-    await AsyncStorage.setItem(CLAVE_DEVICE, guardado).catch(() => {});
-    return guardado;
-  }
+async function crearCodigoCortoLibre() {
   let id = "";
   for (let i = 0; i < 8 && !id; i += 1) {
     const candidato = codigoNuevo();
@@ -80,6 +82,19 @@ async function resolverIdDeEsteCelular() {
   if (!id) id = codigoNuevo();
   await AsyncStorage.setItem(CLAVE_DEVICE, id).catch(() => {});
   return id;
+}
+
+async function resolverIdDeEsteCelular() {
+  const guardado = codigoDe(await AsyncStorage.getItem(CLAVE_DEVICE).catch(() => ""));
+  // Códigos largos viejos (ej. dmvihltu4k2pegy9a) se descartan y se genera uno corto.
+  if (guardado && esCodigoCorto(guardado)) {
+    await AsyncStorage.setItem(CLAVE_DEVICE, guardado).catch(() => {});
+    return guardado;
+  }
+  if (guardado) {
+    await AsyncStorage.removeItem(CLAVE_DEVICE).catch(() => {});
+  }
+  return crearCodigoCortoLibre();
 }
 
 /** Nombre de la empresa si este celular ya está autorizado. Si no, vacío. */
@@ -119,6 +134,7 @@ export async function olvidarSesion() {
 /** Deja el teléfono como una instalación nueva. */
 export async function borrarTodoDelTelefono() {
   sesionEnMemoria = null;
+  idDeEsteCelularPendiente = null;
   await AsyncStorage.clear();
 }
 
