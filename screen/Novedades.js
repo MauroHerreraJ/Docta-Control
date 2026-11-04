@@ -3,7 +3,11 @@ import {
   ActivityIndicator,
   Alert,
   Image,
+  InteractionManager,
+  Keyboard,
   KeyboardAvoidingView,
+  Linking,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -29,7 +33,9 @@ function Icono({ name, size = 16, color = "#222" }) {
   return <Text style={{ fontSize: size, color, fontWeight: "700", lineHeight: size + 4 }}>{glifo}</Text>;
 }
 
+/** En iPhone no usamos expo-speech-recognition: cierra la app al pelear con expo-audio. */
 function moduloVoz() {
+  if (Platform.OS === "ios") return null;
   if (!requireOptionalNativeModule("ExpoSpeechRecognition")) return null;
   try {
     return require("expo-speech-recognition").ExpoSpeechRecognitionModule;
@@ -48,6 +54,7 @@ function picker() {
 }
 
 function dictadoSiHay() {
+  if (Platform.OS === "ios") return null;
   if (!requireOptionalNativeModule("ExpoSpeechRecognition")) return null;
   try {
     return require("./NovedadesDictado").default;
@@ -99,6 +106,21 @@ function horaBA(value) {
     .replace(/\s/g, "");
 }
 
+/** Si expo-audio dejó la sesión en grabación, iOS puede cerrar la app al dictar. */
+async function liberarAudioAntesDeDictar() {
+  try {
+    const audio = require("expo-audio");
+    if (audio?.setAudioModeAsync) {
+      await audio.setAudioModeAsync({
+        allowsRecording: false,
+        playsInSilentMode: true,
+      });
+    }
+  } catch {
+    /* sin expo-audio o no disponible */
+  }
+}
+
 export default function Novedades({ token, onVolver }) {
   const { m, ancho } = useMedida();
   const [cargando, setCargando] = useState(true);
@@ -112,23 +134,43 @@ export default function Novedades({ token, onVolver }) {
   const [audioUri, setAudioUri] = useState("");
   const [video, setVideo] = useState(null);
   const [grabando, setGrabando] = useState(false);
+  /** En iPhone hay que bajar el grabador (expo-audio) antes de dictar o la app se cierra. */
+  const [suspenderGrabador, setSuspenderGrabador] = useState(false);
   const baseRef = useRef("");
+  const dictadoPendienteRef = useRef(false);
+  const tipDictadoIosRef = useRef(false);
+  const inputRef = useRef(null);
   const Dictado = dictadoSiHay();
   const Grabador = grabadorSiHay();
 
+  const soltarDictado = useCallback(() => {
+    setEscuchando(false);
+    setSuspenderGrabador(false);
+    dictadoPendienteRef.current = false;
+    liberarAudioAntesDeDictar().catch(() => {});
+  }, []);
+
   const onDictadoStart = useCallback(() => setEscuchando(true), []);
-  const onDictadoEnd = useCallback(() => setEscuchando(false), []);
+  const onDictadoEnd = useCallback(() => {
+    soltarDictado();
+  }, [soltarDictado]);
   const onDictadoResult = useCallback((event) => {
     const dicho = String(event.results?.[0]?.transcript || "").trim();
     if (!dicho) return;
     const base = baseRef.current;
     setTexto([base, dicho].filter(Boolean).join(" ").slice(0, 2000));
   }, []);
-  const onDictadoError = useCallback((event) => {
-    setEscuchando(false);
-    if (event.error === "no-speech" || event.error === "aborted" || event.error === "speech-timeout") return;
-    Alert.alert("No se pudo dictar", "Probá de nuevo o escribí la novedad.");
-  }, []);
+  const onDictadoError = useCallback(
+    (event) => {
+      soltarDictado();
+      const code = String(event?.error || "");
+      if (code === "no-speech" || code === "aborted" || code === "speech-timeout" || code === "interrupted") {
+        return;
+      }
+      Alert.alert("No se pudo dictar", event?.message || "Probá de nuevo o escribí la novedad.");
+    },
+    [soltarDictado],
+  );
 
   const cargar = useCallback(async () => {
     setCargando(true);
@@ -146,44 +188,133 @@ export default function Novedades({ token, onVolver }) {
     cargar();
   }, [cargar]);
 
+  // iOS solo muestra "Micrófono" en Ajustes después de que la app lo pide una vez.
+  useEffect(() => {
+    if (Platform.OS !== "ios") return undefined;
+    let vivo = true;
+    (async () => {
+      try {
+        const audio = require("expo-audio");
+        if (!audio?.requestRecordingPermissionsAsync) return;
+        const actual = await audio.getRecordingPermissionsAsync?.();
+        if (!vivo || actual?.granted || actual?.status === "granted") return;
+        // Solo dispara el diálogo del sistema; no graba.
+        await audio.requestRecordingPermissionsAsync();
+      } catch (err) {
+        console.warn("[Novedades] permiso mic", err?.message || err);
+      }
+    })();
+    return () => {
+      vivo = false;
+    };
+  }, []);
+
   const puedeEscribir = Boolean(data?.enCurso && data?.asignacionId);
+
+  const arrancarDictadoNativo = useCallback(async () => {
+    const modulo = moduloVoz();
+    if (!modulo) {
+      soltarDictado();
+      Alert.alert("Dictado", "El reconocimiento de voz entra con la próxima compilación de la app.");
+      return;
+    }
+    try {
+      if (typeof modulo.isRecognitionAvailable === "function" && !modulo.isRecognitionAvailable()) {
+        soltarDictado();
+        Alert.alert(
+          "Dictado",
+          Platform.OS === "ios"
+            ? "Activá Dictado / Siri en Ajustes del iPhone para usar esta función."
+            : "Este dispositivo no tiene reconocimiento de voz disponible.",
+        );
+        return;
+      }
+
+      await liberarAudioAntesDeDictar();
+      await new Promise((resolve) => setTimeout(resolve, Platform.OS === "ios" ? 350 : 50));
+
+      const perm = await modulo.requestPermissionsAsync();
+      if (!perm?.granted) {
+        soltarDictado();
+        Alert.alert(
+          "Micrófono",
+          Platform.OS === "ios"
+            ? "Hace falta micrófono y reconocimiento de voz. Activalos en Ajustes → Docta."
+            : "Hace falta el micrófono para dictar la novedad.",
+          Platform.OS === "ios"
+            ? [
+                { text: "Cancelar", style: "cancel" },
+                { text: "Abrir Ajustes", onPress: () => Linking.openSettings().catch(() => {}) },
+              ]
+            : [{ text: "OK" }],
+        );
+        return;
+      }
+
+      baseRef.current = String(texto || "").trim();
+      setEscuchando(true);
+      // Opciones mínimas: en iOS las categorías custom pelean con expo-audio y cierran la app.
+      modulo.start({
+        lang: Platform.OS === "ios" ? "es-ES" : "es-AR",
+        interimResults: true,
+        continuous: false,
+      });
+    } catch (error) {
+      soltarDictado();
+      console.warn("[Novedades] dictado", error?.message || error);
+      Alert.alert("Dictado", error?.message || "No se pudo iniciar el dictado. Probá de nuevo.");
+    }
+  }, [soltarDictado, texto]);
+
+  useEffect(() => {
+    if (!suspenderGrabador || !dictadoPendienteRef.current) return undefined;
+    let cancelado = false;
+    const tarea = InteractionManager.runAfterInteractions(() => {
+      if (cancelado || !dictadoPendienteRef.current) return;
+      dictadoPendienteRef.current = false;
+      arrancarDictadoNativo();
+    });
+    return () => {
+      cancelado = true;
+      tarea?.cancel?.();
+    };
+  }, [suspenderGrabador, arrancarDictadoNativo]);
 
   const onDictar = async () => {
     if (!puedeEscribir || enviando || grabando) return;
+
+    // iPhone: el dictado nativo de Apple (teclado) — evita el crash de expo-speech-recognition.
+    if (Platform.OS === "ios") {
+      inputRef.current?.focus?.();
+      Keyboard.dismiss();
+      setTimeout(() => inputRef.current?.focus?.(), 80);
+      if (!tipDictadoIosRef.current) {
+        tipDictadoIosRef.current = true;
+        Alert.alert(
+          "Dictar en iPhone",
+          "Se abrió el teclado. Tocá el ícono del micrófono del teclado para pasar la voz a texto.",
+        );
+      }
+      return;
+    }
+
     const modulo = moduloVoz();
     if (!modulo) {
       Alert.alert("Dictado", "El reconocimiento de voz entra con la próxima compilación de la app.");
       return;
     }
-    if (escuchando) {
+    if (escuchando || suspenderGrabador) {
       try {
-        modulo.stop();
+        if (typeof modulo.stop === "function") modulo.stop();
       } catch {
-        setEscuchando(false);
+        /* sigue */
       }
+      soltarDictado();
       return;
     }
-    try {
-      if (typeof modulo.isRecognitionAvailable === "function" && !modulo.isRecognitionAvailable()) {
-        Alert.alert("Dictado", "Este dispositivo no tiene reconocimiento de voz disponible.");
-        return;
-      }
-      const perm = await modulo.requestPermissionsAsync();
-      if (!perm.granted) {
-        Alert.alert("Micrófono", "Hace falta el micrófono para dictar la novedad.");
-        return;
-      }
-      baseRef.current = String(texto || "").trim();
-      setEscuchando(true);
-      modulo.start({
-        lang: "es-AR",
-        interimResults: true,
-        continuous: false,
-      });
-    } catch (error) {
-      setEscuchando(false);
-      Alert.alert("Dictado", error?.message || "No se pudo iniciar el dictado. Probá de nuevo.");
-    }
+    // Android: desmontamos el Grabador y después dictamos.
+    dictadoPendienteRef.current = true;
+    setSuspenderGrabador(true);
   };
 
   const onFoto = async () => {
@@ -402,7 +533,7 @@ export default function Novedades({ token, onVolver }) {
                 <Icono name="video" size={m(16)} color="#fff" />
                 <Text style={[styles.chipTexto, { fontSize: m(12) }]}>{video ? "Quitar video" : "Video"}</Text>
               </Pressable>
-              {Grabador ? (
+              {Grabador && !suspenderGrabador ? (
                 <Grabador
                   puede={puedeEscribir}
                   sending={enviando}
@@ -414,11 +545,20 @@ export default function Novedades({ token, onVolver }) {
                 />
               ) : (
                 <Pressable
-                  style={[styles.chip, styles.btnOff, { borderRadius: m(12), paddingHorizontal: m(12), paddingVertical: m(8) }]}
-                  onPress={() => Alert.alert("Audio", "La grabación entra con la próxima compilación de la app.")}
+                  style={[
+                    styles.chip,
+                    { borderRadius: m(12), paddingHorizontal: m(12), paddingVertical: m(8) },
+                    (suspenderGrabador || !Grabador || !puedeEscribir || enviando) && styles.btnOff,
+                  ]}
+                  disabled={suspenderGrabador || !Grabador || !puedeEscribir || enviando}
+                  onPress={() => {
+                    if (!Grabador) Alert.alert("Audio", "La grabación entra con la próxima compilación de la app.");
+                  }}
                 >
                   <Icono name="mic-circle" size={m(16)} color="#fff" />
-                  <Text style={[styles.chipTexto, { fontSize: m(12) }]}>Grabar</Text>
+                  <Text style={[styles.chipTexto, { fontSize: m(12) }]}>
+                    {suspenderGrabador ? "Dictando…" : "Grabar"}
+                  </Text>
                 </Pressable>
               )}
             </View>
@@ -517,6 +657,7 @@ export default function Novedades({ token, onVolver }) {
             ) : null}
             <View style={[contenido, styles.composer, { marginTop: m(8) }]}>
               <TextInput
+                ref={inputRef}
                 style={[
                   styles.input,
                   {
@@ -531,7 +672,13 @@ export default function Novedades({ token, onVolver }) {
                 value={texto}
                 onChangeText={setTexto}
                 placeholder={
-                  escuchando ? "Hablá la novedad…" : puedeEscribir ? "Anotá o dictá una novedad" : "El turno no está en curso"
+                  escuchando
+                    ? "Hablá la novedad…"
+                    : puedeEscribir
+                      ? Platform.OS === "ios"
+                        ? "Anotá o usá el mic del teclado"
+                        : "Anotá o dictá una novedad"
+                      : "El turno no está en curso"
                 }
                 placeholderTextColor="#9CA3AF"
                 multiline
@@ -547,7 +694,13 @@ export default function Novedades({ token, onVolver }) {
                 ]}
                 onPress={onDictar}
                 disabled={!puedeEscribir || enviando || grabando}
-                accessibilityLabel={escuchando ? "Detener dictado" : "Dictar novedad"}
+                accessibilityLabel={
+                  escuchando
+                    ? "Detener dictado"
+                    : Platform.OS === "ios"
+                      ? "Abrir teclado para dictar"
+                      : "Dictar novedad"
+                }
               >
                 <Icono name={escuchando ? "stop" : "mic"} size={m(20)} color="#fff" />
               </Pressable>

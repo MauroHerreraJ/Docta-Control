@@ -1,11 +1,17 @@
 import * as Location from "expo-location";
 import * as Notifications from "expo-notifications";
 import * as TaskManager from "expo-task-manager";
-import { DeviceEventEmitter, Linking, Platform } from "react-native";
+import { AppState, DeviceEventEmitter, Linking, Platform } from "react-native";
 import { despertarConsulta, ordenCerrarApp } from "./fondo";
 import { cargarAlarmaConfig, leerAlarmaConfig, patronVibracion } from "./alarmaConfig";
 import { callarAlarma, cancelarNotificacionAviso, sonarAlarma } from "./overlay";
-import { informarHombreVivo, reconocerPush, registrarTokenPush, restaurarSesion } from "./sesion";
+import {
+  confirmarPushRecibido,
+  informarHombreVivo,
+  reconocerPush,
+  registrarTokenPush,
+  restaurarSesion,
+} from "./sesion";
 
 export const TAREA_PUSH = "docta5-push";
 /** Canal v2: MAX, lockscreen, vibración. Nuevo id = Android aplica config nueva. */
@@ -165,31 +171,73 @@ function tipoVisible(tipo) {
   return tipo === "aviso-panel" || tipo === "hombre_vivo";
 }
 
+function inferirTipo(tipo, titulo, cuerpo) {
+  const limpio = String(tipo || "").trim();
+  if (tipoVisible(limpio)) return limpio;
+  const texto = `${titulo || ""} ${cuerpo || ""}`.toLowerCase();
+  if (texto.includes("hombre vivo")) return "hombre_vivo";
+  if (texto.includes("aviso") || texto.includes("doctacontrol") || texto.includes("acá estoy")) {
+    return "aviso-panel";
+  }
+  return limpio;
+}
+
 function datosDe(origen) {
   const content = origen?.request?.content || origen?.notification?.request?.content;
-  let data = content?.data || origen?.data || origen || {};
-  const crudo = data?.dataString;
-  if (typeof crudo === "string" && crudo.trim()) {
+  const trigger = origen?.request?.trigger || origen?.notification?.request?.trigger;
+  let data = {
+    ...(typeof origen?.data === "object" && origen.data ? origen.data : {}),
+    ...(typeof content?.data === "object" && content.data ? content.data : {}),
+  };
+  // iOS / APNs: a veces el custom payload viene en el trigger, no en content.data.
+  const payload =
+    trigger?.payload ||
+    trigger?.remoteMessage?.data ||
+    trigger?.remoteMessage?.notification ||
+    null;
+  if (payload && typeof payload === "object") {
+    data = { ...payload, ...data };
+  }
+  const crudo = data?.dataString || data?.body;
+  if (typeof crudo === "string" && crudo.trim().startsWith("{")) {
     try {
       data = { ...data, ...JSON.parse(crudo) };
     } catch {
       /* sigue */
     }
   }
+  const title = String(data?.title || content?.title || "DoctaControl");
+  const message = String(
+    data?.message || data?.body || content?.body || "Confirmá que estás en el puesto.",
+  );
+  const tipo = inferirTipo(data?.tipo, title, message);
   return {
-    tipo: String(data?.tipo || ""),
+    tipo,
     clientId: String(data?.id || data?.clientId || ""),
     programaId: String(data?.programaId || ""),
-    title: String(data?.title || content?.title || "DoctaControl"),
-    message: String(data?.message || content?.body || "Confirmá que estás en el puesto."),
+    pushId: String(data?.pushId || data?.apnsId || ""),
+    title,
+    message,
   };
+}
+
+function avisarServerRecibido(datos) {
+  const token = String(sesionPush || "").trim();
+  if (!token) return;
+  confirmarPushRecibido(token, {
+    pushId: datos.pushId,
+    tipo: datos.tipo,
+    foreground: AppState.currentState === "active",
+  }).catch(() => {});
 }
 
 /** Nivel 1: el cartel queda hasta Acá estoy (o tope de seguridad). */
 function abrirCartel(datos, _cuando) {
   if (!tipoVisible(datos.tipo)) return;
   if (yaResuelto(datos)) return;
-  const hasta = AVISO_HASTA_ACK ? Date.now() + AVISO_SEGURIDAD_MS : Date.now() + 10 * 1000;
+  const hasta = AVISO_HASTA_ACK
+    ? Date.now() + AVISO_SEGURIDAD_MS
+    : Date.now() + 10 * 1000;
   if (aviso.abierto && aviso.clientId && aviso.clientId === datos.clientId) {
     iniciarAlarmaCritica();
     return;
@@ -343,8 +391,12 @@ asegurarTarea();
 
 Notifications.setNotificationHandler({
   handleNotification: async (avisoNotif) => {
-    const tipo = String(avisoNotif?.request?.content?.data?.tipo || "");
-    const visible = tipo === "hombre_vivo" || tipo === "aviso-panel";
+    const datos = datosDe(avisoNotif);
+    const visible = tipoVisible(datos.tipo);
+    // iPhone en primer plano: abrir Acá estoy al llegar el push.
+    if (visible) {
+      setTimeout(() => abrirCartel(datos, Date.now()), 0);
+    }
     return {
       // Nivel 1: visible en pantalla bloqueada / bandeja.
       shouldShowBanner: visible,
@@ -458,7 +510,10 @@ export async function activarPush(tokenSesion) {
 }
 
 Notifications.addNotificationReceivedListener((avisoRecibido) => {
-  if (datosDe(avisoRecibido).tipo === "cerrar-app") {
+  const datos = datosDe(avisoRecibido);
+  console.log(`[push] recibido foreground/background · tipo=${datos.tipo} · pushId=${datos.pushId || "-"}`);
+  avisarServerRecibido(datos);
+  if (datos.tipo === "cerrar-app") {
     ordenCerrarApp();
     return;
   }
@@ -466,7 +521,10 @@ Notifications.addNotificationReceivedListener((avisoRecibido) => {
 });
 
 Notifications.addNotificationResponseReceivedListener((respuesta) => {
-  if (datosDe(respuesta?.notification).tipo === "cerrar-app") {
+  const datos = datosDe(respuesta?.notification);
+  console.log(`[push] tocado · tipo=${datos.tipo} · pushId=${datos.pushId || "-"}`);
+  avisarServerRecibido(datos);
+  if (datos.tipo === "cerrar-app") {
     ordenCerrarApp();
     return;
   }

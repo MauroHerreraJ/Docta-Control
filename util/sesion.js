@@ -1,4 +1,5 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { Platform } from "react-native";
 import { cuerpoDeEquipo } from "./equipo";
 
 const API_PUBLICA = "https://doctacontrol-e7803a4382c9.herokuapp.com";
@@ -296,14 +297,16 @@ export async function mantenerSesion(token, signal) {
   });
 }
 
-/** Guarda el token FCM para que el servidor pueda despertar este celular. */
-export async function registrarTokenPush(tokenSesion, fcmToken) {
-  const limpio = String(fcmToken || "").trim();
+/** Guarda el token push (FCM en Android, APNs en iPhone). */
+export async function registrarTokenPush(tokenSesion, pushToken) {
+  const limpio = String(pushToken || "").trim();
   if (!tokenSesion || !limpio) return null;
+  const body = { token: limpio, deviceId: await idDeEsteCelular() };
+  if (Platform.OS === "ios") body.platform = "ios";
   return pedir("/api/push/token", {
     method: "POST",
     token: tokenSesion,
-    body: { token: limpio, deviceId: await idDeEsteCelular() },
+    body,
   });
 }
 
@@ -480,6 +483,21 @@ export async function avanzarTarea(token, id, paso) {
 export async function reconocerPush(token) {
   if (!token) return null;
   return pedir("/api/push/visto", { method: "POST", token, body: {} });
+}
+
+/** Confirma al server que el push llegó (trazabilidad iPhone/Android). */
+export async function confirmarPushRecibido(tokenSesion, { pushId, tipo, foreground } = {}) {
+  if (!tokenSesion) return null;
+  return pedir("/api/push/recibido", {
+    method: "POST",
+    token: tokenSesion,
+    body: {
+      pushId: String(pushId || ""),
+      tipo: String(tipo || ""),
+      foreground: Boolean(foreground),
+      deviceId: await idDeEsteCelular(),
+    },
+  }).catch(() => null);
 }
 
 export async function salirVigilador(token) {

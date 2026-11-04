@@ -10,8 +10,9 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.pedrodarrigo.doctacontrol",
       "infoPlist": {
-        "NSSpeechRecognitionUsageDescription": "Allow $(PRODUCT_NAME) to use speech recognition.",
-        "NSMicrophoneUsageDescription": "Allow $(PRODUCT_NAME) to use the microphone.",
+        "NSSpeechRecognitionUsageDescription": "Docta usa el reconocimiento de voz para dictar novedades.",
+        "NSMicrophoneUsageDescription": "Docta usa el micrófono para grabar y dictar novedades.",
+        "UIBackgroundModes": ["audio", "location", "fetch", "remote-notification"],
         "ITSAppUsesNonExemptEncryption": false
       }
     },
@@ -71,7 +72,7 @@
         "expo-camera",
         {
           "cameraPermission": "Docta usa la cámara para leer los QR de la ronda.",
-          "microphonePermission": false,
+          "microphonePermission": "Docta usa el micrófono para grabar y dictar novedades.",
           "recordAudioAndroid": false,
           "barcodeScannerEnabled": true
         }
@@ -90,7 +91,13 @@
           "recordAudioAndroid": true
         }
       ],
-      "expo-speech-recognition",
+      [
+        "expo-speech-recognition",
+        {
+          "microphonePermission": "Docta usa el micrófono para dictar novedades.",
+          "speechRecognitionPermission": "Docta usa el reconocimiento de voz para dictar novedades."
+        }
+      ],
       "expo-asset",
       "./plugins/withDoctaOverlay.js"
     ],

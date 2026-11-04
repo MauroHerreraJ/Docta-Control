@@ -1,6 +1,11 @@
 import { useEffect, useRef } from "react";
-import { Alert, Pressable, StyleSheet, Text } from "react-native";
-import { requestRecordingPermissionsAsync, useAudioRecorder, useAudioRecorderState } from "expo-audio";
+import { Alert, Linking, Platform, Pressable, StyleSheet, Text } from "react-native";
+import {
+  requestRecordingPermissionsAsync,
+  setAudioModeAsync,
+  useAudioRecorder,
+  useAudioRecorderState,
+} from "expo-audio";
 
 function Marca({ nombre, size, color }) {
   const glifo = nombre === "stop" ? "■" : nombre === "trash" ? "×" : "●";
@@ -40,6 +45,26 @@ export default function NovedadesGrabador({ puede, sending, escuchando, audioUri
     await audioRecorder.stop();
     setAudioUri(audioRecorder.uri || "");
     grabacionInicio.current = 0;
+    // En iOS conviene liberar el modo de grabación al terminar.
+    await setAudioModeAsync({ allowsRecording: false, playsInSilentMode: true }).catch(() => {});
+  };
+
+  const pedirMic = async () => {
+    const permiso = await requestRecordingPermissionsAsync();
+    if (permiso.granted) return true;
+    Alert.alert(
+      "Micrófono",
+      Platform.OS === "ios"
+        ? "Docta no tiene permiso de micrófono. Activalo en Ajustes → Docta → Micrófono."
+        : "Hace falta el micrófono para grabar el audio.",
+      Platform.OS === "ios"
+        ? [
+            { text: "Cancelar", style: "cancel" },
+            { text: "Abrir Ajustes", onPress: () => Linking.openSettings().catch(() => {}) },
+          ]
+        : [{ text: "OK" }],
+    );
+    return false;
   };
 
   const onGrabar = async () => {
@@ -56,19 +81,22 @@ export default function NovedadesGrabador({ puede, sending, escuchando, audioUri
       setAudioUri("");
       return;
     }
-    const permiso = await requestRecordingPermissionsAsync();
-    if (!permiso.granted) {
-      Alert.alert("Micrófono", "Hace falta el micrófono para grabar el audio.");
-      return;
-    }
+    if (!(await pedirMic())) return;
     try {
+      // Obligatorio en iPhone: sin allowsRecording el micrófono no graba.
+      await setAudioModeAsync({
+        allowsRecording: true,
+        playsInSilentMode: true,
+      });
       grabacionInicio.current = Date.now();
       await audioRecorder.prepareToRecordAsync();
       audioRecorder.record();
       grabacionTimer.current = setTimeout(() => {
         cortarGrabacion().catch(() => {});
       }, 60000);
-    } catch {
+    } catch (err) {
+      console.warn("[NovedadesGrabador]", err?.message || err);
+      await setAudioModeAsync({ allowsRecording: false, playsInSilentMode: true }).catch(() => {});
       Alert.alert("Audio", "No se pudo empezar a grabar.");
     }
   };
